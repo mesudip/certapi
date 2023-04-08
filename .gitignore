@@ -1,0 +1,8 @@
+__pycache__/
+*.pem
+*.crt
+*.db
+*.sqlite3
+*.pyc
+/.idea/
+/venv
