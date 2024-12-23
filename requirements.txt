@@ -1,3 +1,6 @@
 cryptography
 sanic
 aiohttp[speedups]
+requests
+# test requirements.
+pytest-dotenv
