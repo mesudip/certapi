@@ -14,11 +14,17 @@ from .util import b64_encode, b64_string
 acme_url = os.environ.get("LETSENCRYPT_API", "https://acme-staging-v02.api.letsencrypt.org/directory")
 
 
-class AcmeError(BaseException):
+class AcmeError(Exception):
     def __init__(self, message, reason, when):
         self.message = message
         self.when = when
         self.reason = reason
+    def jsonObj(self):
+        return {
+            "message": self.message,
+            "when": self.when,
+            "reason": self.reason
+        }
 
 
 class AcmeNetworkError(AcmeError):
@@ -67,10 +73,7 @@ class Acme:
         }
 
         print("-" * 30 + " Request  " + "-" * 30)
-        print("request.payload", json.dumps(orig_payload) if orig_payload is not None else "")
-        print("request", json.dumps(payload, indent=2))
         response = req.post(url, json=payload, headers={"Content-Type": "application/jose+json"})
-        print("-" * 30 + " Response " + "-" * 30)
         print(url)
         if response.status_code != 200:
             print(json.dumps({x[0]: x[1] for x in response.headers.items()}, indent=2))
@@ -119,7 +122,7 @@ class Order:
         self._acme = acme
         self.status = "pending"
 
-    def remaining_challenges(self):
+    def remaining_challenges(self) -> List['Challenge']: 
         return [x for x in self.all_challenges if not x.verified]
 
     def refresh(self):
@@ -184,7 +187,7 @@ class Challenge:
     def self_verify(self) -> Union[bool, requests.Response]:
         identifier = self._data["identifier"]
         if identifier["type"] == "dns":
-            res = requests.get("http://{0}/.well-known/acme-challenge/{1}".format(identifier["value"], self.token))
+            res = requests.get(self.url)
             if res.status_code == 200 and res.content == self.token.encode():
                 return True
             else:
@@ -196,11 +199,15 @@ class Challenge:
             return True, None
         else:
             res = self._acme._signed_req(self._auth_url, None)
-            if res.json()["status"] == "valid":
+            res_json=res.json()
+            if res_json["status"] == "valid":
                 self.verified = True
                 return True, None
+            elif res_json["status"] == "invalid":
+                failed_challenge=[x for x in res_json['challenges'] if x['status'] =='invalid'][0]
+                raise AcmeHttpError("Order is invalid",  "ACME connected to "+ failed_challenge['validationRecord'][0]['addressUsed']+ "And got ["+str(failed_challenge['error']['status']) + "]: "+failed_challenge['error']['detail'],'challenge status')
             else:
-                return False, res
+                return None, res
 
     def get_challenge(self, key="http-01"):
         for method in self._data["challenges"]:

@@ -1,22 +1,20 @@
+from typing import List, Union, Callable
 import json
 import time
-from typing import Union, Callable
 
 import requests
 from cryptography.x509 import Certificate
 from requests import Response
 
-from . import Acme
+from . import Acme, Challenge,Order
 from . import db
 from . import crypto
 from . import challenge
 
 
-# pathlib.Path.mkdir("/var/www/html/.acme/well-known")
-
 
 class CertAuthority:
-    def __init__(self, challengeStore: Callable[[str, str], None] = challenge.addChallenge):
+    def __init__(self, challengeStore: challenge.ChallengeStore):
         self.acme = Acme(db.account_key)
         res: Response = self.acme.register()
         if res.status_code == 201:
@@ -24,7 +22,7 @@ class CertAuthority:
         elif res.status_code != 200:
             raise Exception("Acme registration didn't return 200 or 201 ", res.json())
 
-        self.challengesStore: Callable[[str, str], None] = challengeStore
+        self.challengesStore: challenge.ChallengeStore = challengeStore
 
     def obtainCert(self, host) -> (Union[Certificate, None], requests.Response):
         if type(host) == str:
@@ -34,18 +32,21 @@ class CertAuthority:
         missing = [h for h in host if h not in existing]
         if len(missing) > 0:
             private_key = crypto.gen_key_secp256r1()
-            order, (error) = self.acme.create_authorized_order(missing)
+            order , (error) = self.acme.create_authorized_order(missing)
+
             if order is None:
                 err: requests.Response = error
                 raise ValueError("Unexpected response code :" + str(err.status_code) + json.dumps(err.json(), 2))
+            order:Order =order # just for typehint
             challenges = order.remaining_challenges()
             for c in challenges:
                 print("[ Challenge ]", c.token, "=", c.authorization_key)
-                self.challengesStore(c.token, c.authorization_key)
+                self.challengesStore[c.token]= c.authorization_key
                 # c.self_verify()
                 c.verify()
+
             end = time.time() + 40  # max 12 seconds
-            source = [x for x in challenges]
+            source :List[Challenge] = [x for x in challenges]
             sink = []
             counter = 1
             while len(source) > 0:
@@ -54,8 +55,10 @@ class CertAuthority:
                     break
                 for c in source:
                     status, maybe_request = c.query_progress()
-                    if not status:  # NOTE that it must be True strictly
+                    if  status == True:  # NOTE that it must be True strictly
                         sink.append(c)
+                    elif status  == False:
+                        raise Http
                 if len(sink) > 0:
                     time.sleep(3)
                 source, sink, counter = sink, [], counter + 1
