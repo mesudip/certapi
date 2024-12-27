@@ -1,29 +1,20 @@
-from sanic.handlers import ErrorHandler
-
+from flask import Flask, request, jsonify
 from certmanager import challenge, CertAuthority, crypto
+from certmanager.Acme import AcmeError
+from certmanager.challenge import challenge_store
 
-from sanic import Sanic
-from sanic.response import json, text
-from sanic.request import Request
+app = Flask(__name__)
+app.config['challenges'] = {}
 
-app = Sanic(name="certManager")
-app.ctx.challenges = {}
+certAuthority = CertAuthority(challenge_store)
 
-
-def addChallenge(k, v):
-    app.ctx.challenges[k] = v
-
-
-app.ctx.certAuthority: CertAuthority = CertAuthority(addChallenge)
-
-
-@app.route("/obtain")
-async def home(request: Request):
-    data, error = app.ctx.certAuthority.obtainCert(request.args.getlist("hostname"))
+@app.route("/obtain", methods=["GET"])
+def obtain_cert():
+    data, error = certAuthority.obtainCert(request.args.getlist("hostname"))
     if data:
         (existing, missing, private_key, certificate) = data
         if len(missing):
-            return json(
+            return jsonify(
                 {
                     "existing": existing,
                     "new": {
@@ -39,40 +30,41 @@ async def home(request: Request):
                 }
             )
         else:
-            return json({"existing": existing, "new": {"domains": []}})
+            return jsonify({"existing": existing, "new": {"domains": []}})
     elif error:
-        return json(error.json(), error.status_code)
+        return jsonify(error.json()), error.status_code
     else:
-        return json({"message": "something went wrong"}, 500)
+        return jsonify({"message": "something went wrong"}), 500
 
 
-@app.route("/list")
-async def list_certs(request: Request):
-    return json(
+@app.route("/list", methods=["GET"])
+def list_certs():
+    return jsonify(
         {
             "username": "sudip",
             "theme": "light",
             "k2": "v",
-            # "image": url_for("user_image", filename="sudip"),
         }
     )
 
 
-@app.route("/.well-known/acme-challenge/<cid>")
-async def acme_challenge(req: Request, cid):
-    r = app.ctx.challenges.get(req)
+@app.route("/.well-known/acme-challenge/<cid>", methods=["GET"])
+def acme_challenge(cid):
+    r = app.config['challenges'].get(cid)
 
-    print("[", req.method, "] /.well-known/acme-challenge/" + cid, "=", r)
-    return text("", 404) if r is None else text(r)
-
-
-class CustomErrorHandler(ErrorHandler):
-    def default(self, request, exception):
-        """handles errors that have no error handlers assigned"""
-        # You custom error handling logic...
-        return super().default(request, exception)
+    print(f"[{request.method}] /.well-known/acme-challenge/{cid} = {r}")
+    return "", 404 if r is None else (r, 200)
 
 
-app.error_handler = CustomErrorHandler()
+@app.errorhandler(AcmeError)
+def handle_acme_error(error):
+    return jsonify({"error": error.jsonObj()}), 500
+
+
+@app.errorhandler(Exception)
+def handle_generic_error(error):
+    return jsonify({"error": str(error)}), 500
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, workers=3)
+    app.run(host="0.0.0.0", port=8080, threaded=True)
