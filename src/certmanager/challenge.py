@@ -7,6 +7,7 @@ class ChallengeStore(MutableMapping):
     Abstract base class for a challenge store.
     Provides dictionary-like behavior by inheriting from MutableMapping.
     """
+
     def __setitem__(self, key, value):
         self.save_challenge(key, value)
 
@@ -44,6 +45,7 @@ class InMemoryChallengeStore(ChallengeStore):
     """
     In-memory implementation of the ChallengeStore.
     """
+
     def __init__(self):
         self.challenges = {}
 
@@ -68,6 +70,7 @@ class FileSystemChallengeStore(ChallengeStore):
     """
     Filesystem implementation of the ChallengeStore.
     """
+
     def __init__(self, directory: str):
         self.directory = directory
         os.makedirs(self.directory, exist_ok=True)
@@ -113,6 +116,6 @@ def get_challenge_store():
         return FileSystemChallengeStore(directory)
     else:
         raise ValueError(f"Unknown CHALLENGE_STORE_TYPE: {store_type}")
-    
-challenge_store : ChallengeStore =get_challenge_store()
 
+
+challenge_store: ChallengeStore = get_challenge_store()

@@ -5,11 +5,11 @@ from typing import Union
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from .crypto import key_to_der, key_to_pem
 from .util import b64_string
 
 
 class Key(ABC):
-
     @abstractmethod
     def jwk(self):
         pass
@@ -33,6 +33,24 @@ class Key(ABC):
             return Ed25519Key(key)
         else:
             raise ValueError("Unsupported key type")
+
+    @staticmethod
+    def from_pem(der_bytes):
+        key = serialization.load_pem_private_key(der_bytes, password=None)
+        if isinstance(key, rsa.RSAPrivateKey):
+            return RSAKey(key)
+        elif isinstance(key, ec.EllipticCurvePrivateKey):
+            return ECDSAKey(key)
+        elif isinstance(key, Ed25519PrivateKey):
+            return Ed25519Key(key)
+        else:
+            raise ValueError("Unsupported key type")
+
+    def to_der(self) -> bytes:
+        return key_to_der(self.key)
+
+    def to_pem(self) -> bytes:
+        return key_to_pem(self.key)
 
 
 class RSAKey(Key):
@@ -78,8 +96,12 @@ class Ed25519Key(Key):
     def sign(self, message):
         return self.key.sign(message)
 
+    def sign_csr(self, csr):
+        return csr.sign(self.key, hashes.SHA256())
 
-class ECDSAKey:
+
+class ECDSAKey(Key):
+
     def __init__(self, key: ec.EllipticCurvePrivateKey):
         self.key = key
         public_key = self.key.public_key()
@@ -108,3 +130,6 @@ class ECDSAKey:
         else:
             raise ValueError(f"Unsupported curve with key size {key_size}")
         return self.key.sign(message, ec.ECDSA(algorithm))
+
+    def sign_csr(self, csr):
+        return csr.sign(self.key, hashes.SHA256())

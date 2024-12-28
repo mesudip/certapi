@@ -19,12 +19,9 @@ class AcmeError(Exception):
         self.message = message
         self.when = when
         self.reason = reason
+
     def jsonObj(self):
-        return {
-            "message": self.message,
-            "when": self.when,
-            "reason": self.reason
-        }
+        return {"message": self.message, "when": self.when, "reason": self.reason}
 
 
 class AcmeNetworkError(AcmeError):
@@ -122,7 +119,7 @@ class Order:
         self._acme = acme
         self.status = "pending"
 
-    def remaining_challenges(self) -> List['Challenge']: 
+    def remaining_challenges(self) -> List["Challenge"]:
         return [x for x in self.all_challenges if not x.verified]
 
     def refresh(self):
@@ -132,7 +129,7 @@ class Order:
             self.status = self._data["status"]
         return response
 
-    def get_certificate(self):
+    def get_certificate(self) -> Tuple[Union[Certificate, None], Union[requests.Response, None]]:
         if self.status == "processing":
             raise ValueError(
                 "Order is still in 'processing' state! Wait until the order is finalized, and  call `Order.refresh()`  to update the state"
@@ -199,13 +196,22 @@ class Challenge:
             return True, None
         else:
             res = self._acme._signed_req(self._auth_url, None)
-            res_json=res.json()
+            res_json = res.json()
             if res_json["status"] == "valid":
                 self.verified = True
                 return True, None
             elif res_json["status"] == "invalid":
-                failed_challenge=[x for x in res_json['challenges'] if x['status'] =='invalid'][0]
-                raise AcmeHttpError("Order is invalid",  "ACME connected to "+ failed_challenge['validationRecord'][0]['addressUsed']+ "And got ["+str(failed_challenge['error']['status']) + "]: "+failed_challenge['error']['detail'],'challenge status')
+                failed_challenge = [x for x in res_json["challenges"] if x["status"] == "invalid"][0]
+                raise AcmeHttpError(
+                    "Order is invalid",
+                    "ACME connected to "
+                    + failed_challenge["validationRecord"][0]["addressUsed"]
+                    + "And got ["
+                    + str(failed_challenge["error"]["status"])
+                    + "]: "
+                    + failed_challenge["error"]["detail"],
+                    "challenge status",
+                )
             else:
                 return None, res
 

@@ -92,12 +92,12 @@ def key_from_der(bytes):
     return serialization.load_der_private_key(bytes, None)
 
 
-def key_from_pem(string):
-    return serialization.load_pem_private_key(string, None)
+def key_from_pem(data: bytes):
+    return serialization.load_pem_private_key(data, None)
 
 
-def cert_from_pem(string: str) -> Certificate:
-    return x509.load_pem_x509_certificate(str)
+def cert_from_pem(data: bytes) -> Certificate:
+    return x509.load_pem_x509_certificate(data)
 
 
 def cert_to_pem(cert):
