@@ -10,7 +10,7 @@ setup(
         "requests",
     ],
     include_package_data=True,
-    description="A certificate management tool",
+    description="Python Package for managing keys, request SSL certificates from ACME.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     author="Sudip Bhattarai",
