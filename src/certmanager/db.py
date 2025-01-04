@@ -1,7 +1,8 @@
-import sqlite3
-from typing import Union, Tuple
-from .crypto import *
 import os
+import sqlite3
+from typing import Union, Tuple, Optional
+
+from .crypto import *
 from flask import g
 from abc import ABC, abstractmethod
 
@@ -144,7 +145,7 @@ class FilesystemKeyStore(KeyStore):
             self.account_key = self.gen_key("acme_account")
         return self.account_key
 
-    def save_key(self, key: RSAPrivateKey, name: str = None) -> int:
+    def save_key(self, key: RSAPrivateKey, name: str = None) -> str:
         key_path = os.path.join(self.keys_dir, f"{name}.key")
         with open(key_path, "wb") as f:
             f.write(key_to_pem(key))
@@ -212,3 +213,153 @@ class FilesystemKeyStore(KeyStore):
         if cert is None or key is None:
             return None
         return (domain, key, cert)
+
+
+class PostgresKeyStore(KeyStore):
+    def __init__(self, db_url="postgresql://user:password@localhost/dbname"):
+        self.db_url = db_url
+
+        import psycopg2
+
+        self.psycopg2 = psycopg2
+
+    def setup(self):
+        self._initialize_pool()
+        self._initialize_db()
+        self.account_key = self._init_account_key()
+
+    def _initialize_pool(self):
+        """Initialize the connection pool."""
+        from psycopg2.pool import SimpleConnectionPool
+
+        self.pool = SimpleConnectionPool(1, 1, self.db_url)
+
+    def _check_connection(self, conn):
+        """Check if the connection is alive by using the `ping` method."""
+        try:
+            conn.ping()  # This will raise an exception if the connection is not alive.
+            return True
+        except self.psycopg2.OperationalError:
+            return False
+
+    def _get_db_connection(self):
+        """Get a connection from the pool and ensure it is healthy."""
+        conn = self.pool.getconn()
+
+        # Check connection health
+        if not self._check_connection(conn):
+            print("Connection is not healthy, reconnecting...")
+            self.pool.putconn(conn, close=True)  # Close the bad connection
+            conn = self.pool.getconn()  # Get a fresh connection
+
+        return conn
+
+    def _initialize_db(self):
+        """Initializes the database with necessary tables."""
+        conn = self._get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS private_keys (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(50) NULL,
+                content BYTEA
+            );
+            CREATE TABLE IF NOT EXISTS certificates (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(50) NULL,
+                priv_id INTEGER REFERENCES private_keys NOT NULL,
+                content BYTEA,
+                sign_id INTEGER REFERENCES private_keys NULL
+            );
+            CREATE TABLE IF NOT EXISTS ssl_domains (
+                domain VARCHAR(255),
+                certificate_id INTEGER REFERENCES certificates
+            );
+            CREATE TABLE IF NOT EXISTS ssl_wildcards (
+                domain VARCHAR(255),
+                certificate_id INTEGER REFERENCES certificates
+            );
+        """
+        )
+
+        cur.close()
+        conn.commit()
+
+    def save_key(self, key: RSAPrivateKey, name: str = None) -> int:
+        """Saves a private key in the database."""
+        conn = self._get_db_connection()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO private_keys (name, content) VALUES (%s, %s) RETURNING id", (name, key_to_der(key)))
+        key_id = cur.fetchone()[0]
+        cur.close()
+        conn.commit()
+        return key_id
+
+    def gen_key(self, name: str = None, size: int = 4096) -> RSAPrivateKey:
+        """Generates a new RSA private key and saves it."""
+        key = gen_key_rsa(size)
+        self.save_key(key, name)
+        return key
+
+    def save_cert(self, private_key_id: int, cert: Certificate, domains: List[str], name: str = None) -> int:
+        """Saves a certificate along with associated domains."""
+        conn = self._get_db_connection()
+        cur = conn.cursor()
+
+        # Insert certificate
+        cur.execute(
+            "INSERT INTO certificates (name, priv_id, content) VALUES (%s, %s, %s) RETURNING id",
+            (name, private_key_id, cert.public_bytes(serialization.Encoding.DER)),
+        )
+        cert_id = cur.fetchone()[0]
+
+        # Insert associated domains
+        for domain in domains:
+            cur.execute("INSERT INTO ssl_domains (domain, certificate_id) VALUES (%s, %s)", (domain, cert_id))
+
+        cur.close()
+        conn.commit()
+        return cert_id
+
+    def get_cert(self, domain: str) -> Optional[Tuple[int, RSAPrivateKey, Certificate]]:
+        """Fetches a certificate and its associated private key for a domain."""
+        conn = self._get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT c.id, p.content, c.content
+            FROM ssl_domains s
+            JOIN certificates c ON s.certificate_id = c.id
+            JOIN private_keys p ON c.priv_id = p.id
+            WHERE s.domain = %s
+        """,
+            (domain,),
+        )
+        res = cur.fetchone()
+
+        cur.close()
+        conn.commit()
+
+        if res:
+            return (res[0], Key.from_der(res[1]), cert_from_der(res[2]))
+        return None
+
+    def _init_account_key(self) -> RSAPrivateKey:
+        """Initializes or retrieves the ACME account key."""
+        acme_key_name = "ACME Account Key"
+        conn = self._get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT content FROM private_keys WHERE name = %s", (acme_key_name,))
+        account_key_data = cur.fetchone()
+
+        if not account_key_data:
+            account_key = self.gen_key(acme_key_name)
+        else:
+            account_key = key_from_der(account_key_data[0])
+
+        cur.close()
+
+        return account_key

@@ -3,9 +3,6 @@ from cryptography.hazmat.primitives import serialization
 from certmanager.crypto import gen_key_rsa, key_to_pem
 from certmanager.custom_certauthority import CustomCertAuthority
 import os
-import tempfile
-import os
-import tempfile
 from contextlib import contextmanager
 
 

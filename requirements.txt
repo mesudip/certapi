@@ -1,6 +1,5 @@
 cryptography
-sanic
-aiohttp[speedups]
 requests
 # test requirements.
 pytest-dotenv
+psycopg2

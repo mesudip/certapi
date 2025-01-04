@@ -10,3 +10,7 @@ testpaths = [
 ]
 env_files =[".env", ".test.env"]
 pythonpath = "src"
+
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"

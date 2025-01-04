@@ -12,6 +12,7 @@ app.config["challenges"] = {}
 key_store = FilesystemKeyStore("db")
 
 certAuthority = CertAuthority(challenge_store, key_store)
+certAuthority.setup()
 
 
 @app.route("/obtain", methods=["GET"])
@@ -21,6 +22,7 @@ def obtain_cert():
         hostnames = request.args.getlist("hostname")
     except TypeError:
         hostnames = request.args.get("hostname")
+
     data, error = certAuthority.obtainCert(hostnames)
 
     if data:
@@ -67,9 +69,9 @@ def acme_challenge(cid):
 
 
 @app.errorhandler(AcmeError)
-def handle_acme_error(error):
+def handle_acme_error(error: AcmeError):
     print(error, file=sys.stderr)
-    return jsonify({"error": error.jsonObj()}), 500
+    return jsonify({"error": error.json_obj()}), 500
 
 
 # @app.errorhandler(Exception)

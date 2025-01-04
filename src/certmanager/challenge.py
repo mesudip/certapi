@@ -53,7 +53,7 @@ class InMemoryChallengeStore(ChallengeStore):
         self.challenges[key] = value
 
     def get_challenge(self, key: str) -> str:
-        return self.challenges.get(key, None)
+        return self.challenges.get(key, "")
 
     def delete_challenge(self, key: str):
         if key in self.challenges:
