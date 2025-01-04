@@ -1,10 +1,10 @@
 import sys
 
 from flask import Flask, request, jsonify
-from certmanager import challenge, CertAuthority, crypto
-from certmanager.Acme import AcmeError
-from certmanager.challenge import challenge_store
-from certmanager.db import SqliteKeyStore, FilesystemKeyStore
+from certapi import challenge, CertAuthority, crypto
+from certapi.Acme import AcmeError
+from certapi.challenge import challenge_store
+from certapi.db import SqliteKeyStore, FilesystemKeyStore
 
 app = Flask(__name__)
 app.config["challenges"] = {}

@@ -6,7 +6,7 @@
     "configurations": [
 
         {
-            "name": "Certmanager App",
+            "name": "CertApi App",
             "type": "python",
             "request": "launch",
             "program": "src/app.py",

@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="certmanager",
+    name="certapi",
     version="0.1.0",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
@@ -15,7 +15,7 @@ setup(
     long_description_content_type="text/markdown",
     author="Sudip Bhattarai",
     author_email="sudipbhattarai100@gmail.com",
-    url="https://github.com/mesudip/certmanager",
+    url="https://github.com/mesudip/certapi",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

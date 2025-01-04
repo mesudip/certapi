@@ -1,7 +1,7 @@
 import pytest
 from cryptography.hazmat.primitives import serialization
-from certmanager.crypto import gen_key_rsa, key_to_pem
-from certmanager.custom_certauthority import CustomCertAuthority
+from certapi.crypto import gen_key_rsa, key_to_pem
+from certapi.custom_certauthority import CustomCertAuthority
 import os
 from contextlib import contextmanager
 

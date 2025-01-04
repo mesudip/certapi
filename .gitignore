@@ -13,4 +13,4 @@ db/
 challenges/
 acme-challenges/
 build/
-src/certmanager.egg-info
+src/certapi.egg-info
