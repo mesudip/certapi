@@ -28,6 +28,9 @@ jobs:
       # Build the distribution
       - name: Build distribution
         run: |
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          VERSION=${CURRENT_TAG#v}  # Remove 'v' from the tag
+          sed -i "s/version=\"[^\"]*\"/version=\"$VERSION\"/" setup.py
           python setup.py sdist bdist_wheel
 
       # Upload the distribution to PyPI
