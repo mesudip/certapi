@@ -12,15 +12,16 @@ from .crypto import sign, digest_sha256, csr_to_der, jwk, get_algorithm_name
 from .util import b64_encode, b64_string
 
 # acme_url = os.environ.get("LETSENCRYPT_API", "https://acme-staging-v02.api.letsencrypt.org/directory")
-acme_url = os.environ.get("LETSENCRYPT_API", "https://acme-v02.api.letsencrypt.org/directory")
+acme_url = os.environ.get("LETSENCRYPT_API", None)
 
 
 class AcmeError(Exception):
     def __init__(self, message, detail, step):
-        super().__init__(step,message)
+        super().__init__(step, message)
         self.message: str = message
         self.step: str = step
         self.detail: dict = detail
+        self.can_retry = False
 
     def json_obj(self) -> dict:
         return {"message": self.message, "step": self.step, "detail": self.detail}
@@ -36,6 +37,7 @@ class AcmeNetworkError(AcmeError, requests.RequestException):
         requests.RequestException.__init__(self, request=request)
         AcmeError.__init__(self, message, detail, step)
         requests.RequestException.__init__(self, request=request)  # Pass message to RequestException
+        self.can_retry = True
 
 
 class AcmeHttpError(AcmeError, requests.HTTPError):
@@ -45,7 +47,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
 
     def __init__(self, response: requests.Response, step: str):
         requests.HTTPError.__init__(self, response=response)
-        self.response=response
+        self.response = response
         (message, detail) = self.extract_acme_response_error()
         AcmeError.__init__(self, message, detail, step)
 
@@ -121,8 +123,8 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                 message = err_detail
 
             if message is None:
-                if res_json.get('detail'):
-                    message = res_json['detail']
+                if res_json.get("detail"):
+                    message = res_json["detail"]
                 else:
                     message = "Received status=" + str(self.response.status_code) + " from AMCE server"
             if error is None:
@@ -141,22 +143,28 @@ class AcmeInvaliOrderError(AcmeHttpError):
         super().__init__(response, step)
 
 
+class AcmeInvaliNonceError(AcmeHttpError):
+    def __init__(self, response: requests.Response, step: str):
+        super().__init__(response, step)
+        self.can_retry = True
+
+
 def request(method, step: str, url: str, json=None, headers=None, throw=True) -> requests.Response:
-    res=None
+    res = None
     try:
         res = requests.request(method, url, json=json, headers=headers, timeout=15)
-        print("Request ["+str(res.status_code)+"] : " + method + " " + url + " step=" + step)
+        print("Request [" + str(res.status_code) + "] : " + method + " " + url + " step=" + step)
     except requests.HTTPError as e:
         status = res.status_code if res else None
         status = status if status else (e.response.status_code if e.response else None)
         if status:
-            print("Request ["+str(status)+"] : " + method + " " + url + " step=" + step)
+            print("Request [" + str(status) + "] : " + method + " " + url + " step=" + step)
         else:
             print("Request : " + method + " " + url + " step=" + step)
 
         raise e
     except requests.RequestException as e:
-        print("Request : " + method + " " + url + " step=" + step)
+        print("Request : " + str(method) + " " + str(url) + " step=" + str(step))
         raise AcmeNetworkError(
             e.request,
             f"Error communicating with ACME server",
@@ -169,6 +177,18 @@ def request(method, step: str, url: str, json=None, headers=None, throw=True) ->
             step,
         )
     if 199 <= res.status_code > 299:
+        [print(x, y) for (x, y) in res.headers.items()]
+        print("Response:", res.text)
+        json_data = None
+        try:
+            json_data = res.json()
+        except requests.RequestException as e:
+            pass
+        if json_data and json_data.get("type"):
+            errorType = json_data["type"]
+            if errorType == "urn:ietf:params:acme:error:badNonce":
+                raise AcmeInvaliNonceError(res, step=step)
+
         if throw:
             raise AcmeHttpError(res, step=step)
     return res
@@ -192,7 +212,7 @@ class Acme:
         # json web key format for public key
         self.jwk = jwk(self.account_key)
         self.nonce = []
-        self.acme_url = url
+        self.acme_url = url if url else self.URL_PROD
         self.key_id = None
         self.directory = None
         self._nonce_lock = threading.Lock()  # Mutex for safe access to nonce
@@ -210,19 +230,12 @@ class Acme:
         url = self._directory(path_name)
         return self._signed_req(url, payload, depth, step="Acme request:" + path_name)
 
-    def _signed_req(
-        self, url, payload: Union[str, dict, list, bytes, None] = None, depth=0, step="Acme Request", throw=True
-    ) -> requests.Response:
-        payload64 = b64_encode(payload) if payload is not None else b""
+    def get_nonce(self, step: str, counter=1):
         nonce = None
-        with self._nonce_lock:  # Acquire lock to ensure thread-safe access to nonce
-            # Check if there are any nonces available
+        with self._nonce_lock:  # Acquire nonce
             if self.nonce:
-                # Pop the first nonce from the list
                 nonce = self.nonce.pop(0)
-
-                # Fetch a new nonce if the list is empty
-        nonce = (
+        return (
             nonce
             if nonce
             else get(
@@ -230,10 +243,20 @@ class Acme:
             ).headers.get("Replay-Nonce")
         )
 
+    def record_nonce(self, response: requests.Response) -> requests.Response:
+        with self._nonce_lock:
+            self.nonce.append(response.headers.get("Replay-Nonce", None))
+        return response
+
+    def _signed_req(
+        self, url, payload: Union[str, dict, list, bytes, None] = None, depth=0, step="Acme Request", throw=True
+    ) -> requests.Response:
+        payload64 = b64_encode(payload) if payload is not None else b""
+
         protected = {
             "url": url,
             "alg": get_algorithm_name(self.account_key),
-            "nonce": nonce,
+            "nonce": self.get_nonce(step),
         }
 
         if self.key_id:
@@ -246,19 +269,16 @@ class Acme:
             "payload": payload64.decode("utf-8"),
             "signature": b64_string(sign(self.account_key, b".".join([protectedb64, payload64]))),
         }
+        try:
 
-        response = post(step, url, json=payload, headers={"Content-Type": "application/jose+json"}, throw=throw)
-        if response.status_code > 299 or response.status_code < 200 :
-            print("-" * 30 + " Request  " + "-" * 30)
-            print(response.status_code, " : ", url)
-            print("status:", response.status_code)
-            print(json.dumps({x[0]: x[1] for x in response.headers.items()}, indent=2))
-            print(response.text)
-            print("-" * 60)
+            response = post(step, url, json=payload, headers={"Content-Type": "application/jose+json"}, throw=throw)
+        except AcmeError as e:
+            if e.can_retry and depth <= 0:
+                return self._signed_req(url, payload, depth + 1, step, throw)
+            else:
+                raise e
 
-        with self._nonce_lock:
-            self.nonce.append(response.headers.get("Replay-Nonce", None))
-        return response
+        return self.record_nonce(response)
 
     def register(self):
         response = self._directory_req("newAccount", {"termsOfServiceAgreed": True})

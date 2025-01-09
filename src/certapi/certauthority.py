@@ -15,8 +15,8 @@ from .db import KeyStore
 
 
 class CertAuthority:
-    def __init__(self, challenge_store: challenge.ChallengeStore, key_store: KeyStore,acme_url=None):
-        self.acme = Acme(key_store.account_key,url=acme_url)
+    def __init__(self, challenge_store: challenge.ChallengeStore, key_store: KeyStore, acme_url=None):
+        self.acme = Acme(key_store.account_key, url=acme_url)
         self.key_store = key_store
         self.challengesStore: challenge.ChallengeStore = challenge_store
 
@@ -28,9 +28,7 @@ class CertAuthority:
         elif res.status_code != 200:
             raise Exception("Acme registration didn't return 200 or 201 ", res.json())
 
-    def obtainCert(
-        self, host: Union[str, List[str]]
-    ) -> Union[Tuple["CertificateResponse", None], Tuple[None, requests.Response]]:
+    def obtainCert(self, host: Union[str, List[str]]) -> "CertificateResponse":
         if type(host) == str:
             host = [host]
 
@@ -73,12 +71,11 @@ class CertAuthority:
                 order.refresh()  # is this refresh necessary?
 
                 if order.status == "valid":
-                    (certificate, _) = order.get_certificate()
+                    certificate = order.get_certificate()
                     key_id = self.key_store.save_key(private_key, missing[0])
                     cert_id = self.key_store.save_cert(key_id, certificate, missing)
                     issued_cert = IssuedCert(key_to_pem(private_key), certificate, missing)
-                    response = createExistingResponse(existing, [issued_cert])
-                    return (response, None)
+                    return createExistingResponse(existing, [issued_cert])
                 elif order.status == "processing":
                     if count == 0:
                         return None
@@ -87,7 +84,7 @@ class CertAuthority:
 
             return obtain_cert()
         else:
-            return createExistingResponse(existing, []), None
+            return createExistingResponse(existing, [])
 
 
 def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, Certificate]], issued_certs: List["IssuedCert"]):
