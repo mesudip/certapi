@@ -1,7 +1,7 @@
 import os
 from collections.abc import MutableMapping
-from src.certapi.challenge import ChallengeStore
-from src.certapi.cloudflare_client import Cloudflare
+from certapi.challenge import ChallengeStore
+from certapi.cloudflare_client import Cloudflare
 
 class CloudflareChallengeStore(ChallengeStore):
     def __init__(self):
@@ -19,28 +19,29 @@ class CloudflareChallengeStore(ChallengeStore):
         except Exception:
             return False
 
-    def save_challenge(self, key: str, value: str):
+    def save_challenge(self, key: str, value: str,domain=None):
         # key example: _acme-challenge.sub.example.com
         # value example: ACME_CHALLENGE_TOKEN
-        base_domain = self.cloudflare.determine_registered_domain(key)
+        base_domain = self.cloudflare.determine_registered_domain(domain)
+        
         record_id = self.cloudflare.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
         print(f"CloudflareChallengeStore: Saved challenge for {key} with record ID {record_id}")
 
-    def get_challenge(self, key: str) -> str:
-        base_domain = self.cloudflare.determine_registered_domain(key)
+    def get_challenge(self, key: str, domain: str) -> str:
+        base_domain = self.cloudflare.determine_registered_domain(domain)
         records = self.cloudflare.list_txt_records(base_domain, name_filter=key)
         for record in records:
             if record['name'] == key:
                 return record['content']
         return None # Return None if not found, as per ChallengeStore's __getitem__ behavior
 
-    def delete_challenge(self, key: str):
+    def delete_challenge(self, key: str,domain:str):
         if key not in self.challenges_map:
             raise KeyError(f"Challenge {key} not found in store (no record_id stored).")
         
         record_id = self.challenges_map[key]
-        base_domain = self.cloudflare.determine_registered_domain(key)
+        base_domain = self.cloudflare.determine_registered_domain(domain)
         self.cloudflare.delete_record(record=record_id, domain=base_domain)
         del self.challenges_map[key]
         print(f"CloudflareChallengeStore: Deleted challenge for {key} with record ID {record_id}")

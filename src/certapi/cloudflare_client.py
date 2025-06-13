@@ -8,7 +8,7 @@ class Cloudflare(object):
     name='cloudflare'
     def __init__(self):
         self.token = getenv('CLOUDFLARE_API_TOKEN')
-        self.account_id=getenv('CLOUDFLARE_ACCOUNT_ID')
+        self.account_id = getenv('CLOUDFLARE_ACCOUNT_ID')
         self.api = "https://api.cloudflare.com/client/v4"
         if not self.token:
             raise Exception('CLOUDFLARE_API_TOKEN not found in environment')
@@ -28,7 +28,7 @@ class Cloudflare(object):
             return self._zones_cache
 
         request_headers = self._cloudflare_headers()
-        api_url = "{0}/zones".format(self.api)
+        api_url = "{0}/zones?per_page=50".format(self.api)
         response = urlopen(Request(api_url, headers=request_headers))
         if response.getcode() != 200:
             raise Exception(json.loads(response.read().decode('utf8')))

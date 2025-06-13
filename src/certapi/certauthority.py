@@ -6,19 +6,30 @@ import requests
 from cryptography.x509 import Certificate
 from requests import Response
 
+from typing import List, Union, Callable, Tuple, Dict
+import json
+import time
+
+import requests
+from cryptography.x509 import Certificate
+from requests import Response
+
 from . import Acme, Challenge, Order
 from . import crypto
 from . import challenge
-from .crypto import cert_to_pem, key_to_pem
+from .crypto import cert_to_pem, key_to_pem, digest_sha256
 from .crypto_classes import Key
 from .db import KeyStore
+from .util import b64_string
 
 
 class CertAuthority:
-    def __init__(self, challenge_store: challenge.ChallengeStore, key_store: KeyStore, acme_url=None):
+    def __init__(self, challenge_store: challenge.ChallengeStore, key_store: KeyStore, acme_url=None,
+                 dns_stores: List[challenge.ChallengeStore] = None):
         self.acme = Acme(key_store.account_key, url=acme_url)
         self.key_store = key_store
         self.challengesStore: challenge.ChallengeStore = challenge_store
+        self.dns_stores = dns_stores if dns_stores is not None else []
 
     def setup(self):
         self.acme.setup()
@@ -35,18 +46,47 @@ class CertAuthority:
         existing = {c[0]: c[1] for c in [(h, self.key_store.get_cert(h)) for h in host] if c[1] is not None}
         missing = [h for h in host if h not in existing]
         if len(missing) > 0:
+            has_wildcard=False
+            # Determine which challenge store to use
+            challenge_store_to_use = self.challengesStore
+            for h in missing:
+                if h.startswith("*."):  # Wildcard domain
+                    has_wildcard=True
+                    found_dns_store = False
+                    
+                    for dns_store in self.dns_stores:
+                        if dns_store.has_domain(h.lstrip("*.")):  # Check if the DNS store can handle the base domain
+                            challenge_store_to_use = dns_store
+                            found_dns_store = True
+                            break
+                    if not found_dns_store:
+                        raise Exception(f"No DNS challenge store found for wildcard domain {h}")
+                    break # Assuming all domains in a single request will use the same challenge type
+
             private_key = crypto.gen_key_secp256r1()
             order = self.acme.create_authorized_order(missing)
 
             challenges = order.remaining_challenges()
+
             for c in challenges:
                 print("[ Challenge ]", c.token, "=", c.authorization_key)
-                self.challengesStore[c.token] = c.authorization_key
+                # For DNS-01 challenges, the key should be _acme-challenge.<domain>
+                challenge_name = f"_acme-challenge.{c.domain}" if has_wildcard else c.token
+                
+                # For DNS-01 challenges, the value is the SHA256 hash of the authorization_key, base64url encoded
+                challenge_value = b64_string(digest_sha256(c.authorization_key.encode('utf8'))) if has_wildcard else c.authorization_key
+                
+                challenge_store_to_use.save_challenge(challenge_name, challenge_value, c.domain)
+
+            # Add an initial sleep to allow DNS propagation
+            if has_wildcard:
+                print("Waiting for DNS propagation (10 seconds)...")
+                time.sleep(10)
+
             for c in challenges:
                 # c.self_verify()
-                c.verify()
-
-            end = time.time() + 40  # max 12 seconds
+                c.verify(dns=has_wildcard)
+            end = time.time() + 60  # Increase overall timeout
             source: List[Challenge] = [x for x in challenges]
             sink = []
             counter = 1
@@ -61,8 +101,6 @@ class CertAuthority:
                 if len(sink) > 0:
                     time.sleep(3)
                 source, sink, counter = sink, [], counter + 1
-            else:
-                print("Order is already Ready.")
             csr = crypto.create_csr(private_key, missing[0], missing[1:])
             order.finalize(csr)
 
@@ -75,9 +113,17 @@ class CertAuthority:
                     key_id = self.key_store.save_key(private_key, missing[0])
                     cert_id = self.key_store.save_cert(key_id, certificate, missing)
                     issued_cert = IssuedCert(key_to_pem(private_key), certificate, missing)
+                    # Clean up challenges after successful certificate issuance
+                    for c in challenges:
+                        challenge_name = f"_acme-challenge.{c.domain}" if has_wildcard else c.token
+                        challenge_store_to_use.delete_challenge(challenge_name, c.domain)
                     return createExistingResponse(existing, [issued_cert])
                 elif order.status == "processing":
                     if count == 0:
+                        # Clean up challenges if timeout occurs
+                        for c in challenges:
+                            challenge_name = f"_acme-challenge.{c.domain}" if has_wildcard else c.token
+                            challenge_store_to_use.delete_challenge(challenge_name, c.domain)
                         return None
                     return obtain_cert()
                 return None

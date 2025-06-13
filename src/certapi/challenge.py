@@ -2,43 +2,25 @@ import os
 from collections.abc import MutableMapping
 
 
-class ChallengeStore(MutableMapping):
+class ChallengeStore:
     """
     Abstract base class for a challenge store.
-    Provides dictionary-like behavior by inheriting from MutableMapping.
     """
 
-    def __setitem__(self, key, value):
-        self.save_challenge(key, value)
+    def save_challenge(self, key: str, value: str, domain: str = None):
+        raise NotImplementedError("Must implement `save_challenge` method.")
 
-    def __getitem__(self, key):
-        value = self.get_challenge(key)
-        if value is None:
-            raise KeyError(key)
-        return value
+    def get_challenge(self, key: str, domain: str = None) -> str:
+        raise NotImplementedError("Must implement `get_challenge` method.")
 
-    def __delitem__(self, key):
-        if key not in self:
-            raise KeyError(key)
-        self.delete_challenge(key)
-
-    def __contains__(self, key):
-        return self.get_challenge(key) is not None
+    def delete_challenge(self, key: str, domain: str = None):
+        raise NotImplementedError("Must implement `delete_challenge` method.")
 
     def __iter__(self):
         raise NotImplementedError("Must implement `__iter__` method.")
 
     def __len__(self):
         raise NotImplementedError("Must implement `__len__` method.")
-
-    def save_challenge(self, key: str, value: str):
-        raise NotImplementedError("Must implement `save_challenge` method.")
-
-    def get_challenge(self, key: str) -> str:
-        raise NotImplementedError("Must implement `get_challenge` method.")
-
-    def delete_challenge(self, key: str):
-        raise NotImplementedError("Must implement `delete_challenge` method.")
 
 
 class InMemoryChallengeStore(ChallengeStore):
@@ -49,13 +31,13 @@ class InMemoryChallengeStore(ChallengeStore):
     def __init__(self):
         self.challenges = {}
 
-    def save_challenge(self, key: str, value: str):
+    def save_challenge(self, key: str, value: str, domain: str = None):
         self.challenges[key] = value
 
-    def get_challenge(self, key: str) -> str:
+    def get_challenge(self, key: str, domain: str = None) -> str:
         return self.challenges.get(key, "")
 
-    def delete_challenge(self, key: str):
+    def delete_challenge(self, key: str, domain: str = None):
         if key in self.challenges:
             del self.challenges[key]
 
@@ -75,19 +57,19 @@ class FileSystemChallengeStore(ChallengeStore):
         self.directory = directory
         os.makedirs(self.directory, exist_ok=True)
 
-    def save_challenge(self, key: str, value: str):
+    def save_challenge(self, key: str, value: str, domain: str = None):
         file_path = os.path.join(self.directory, key)
         with open(file_path, "w") as file:
             file.write(value)
 
-    def get_challenge(self, key: str) -> str:
+    def get_challenge(self, key: str, domain: str = None) -> str:
         file_path = os.path.join(self.directory, key)
         if not os.path.exists(file_path):
             return None
         with open(file_path, "r") as file:
             return file.read()
 
-    def delete_challenge(self, key: str):
+    def delete_challenge(self, key: str, domain: str = None):
         file_path = os.path.join(self.directory, key)
         if os.path.exists(file_path):
             os.remove(file_path)

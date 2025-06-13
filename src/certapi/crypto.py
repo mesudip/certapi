@@ -2,6 +2,7 @@ from typing import List, Union
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import utils
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, padding, ed25519
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
@@ -46,6 +47,8 @@ def get_algorithm_name(key):
             return "ES384"
         elif curve_name == "secp521r1":
             return "ES512"
+        else:
+            raise ValueError(f"Unsupported EC curve: {curve_name}")
     else:
         raise ValueError("Unsupported key type")
 
@@ -133,6 +136,16 @@ def sign(key: Union[RSAPrivateKey, Ed25519PrivateKey, EllipticCurvePrivateKey], 
     elif isinstance(key, EllipticCurvePrivateKey):
         return key.sign(message, ec.ECDSA(hasher))
 
+def sign_for_jws(key, message, hasher=hashes.SHA256()):
+    if isinstance(key, EllipticCurvePrivateKey):
+        der_sig = key.sign(message, ec.ECDSA(hasher))
+        r, s = utils.decode_dss_signature(der_sig)
+        num_bytes = (key.curve.key_size + 7) // 8
+        r_bytes = r.to_bytes(num_bytes, 'big')
+        s_bytes = s.to_bytes(num_bytes, 'big')
+        return r_bytes + s_bytes
+    else:
+        return sign(key,message,hasher)
 
 def sign_jws(key: RSAPrivateKey, data: object):
     pass

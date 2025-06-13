@@ -1,3 +1,4 @@
+import os
 import sys
 import traceback
 
@@ -5,14 +6,17 @@ from flask import Flask, request, jsonify
 from certapi import challenge, CertAuthority, crypto
 from certapi.Acme import AcmeError
 from certapi.challenge import challenge_store
+from certapi.cloudflare_challenge_store import CloudflareChallengeStore
 from certapi.db import SqliteKeyStore, FilesystemKeyStore
 
 app = Flask(__name__)
 app.config["challenges"] = {}
 
 key_store = FilesystemKeyStore("db")
-
-certAuthority = CertAuthority(challenge_store, key_store)
+dns_stores=[]
+if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
+    dns_stores.append(CloudflareChallengeStore())
+certAuthority = CertAuthority(challenge_store, key_store,dns_stores=dns_stores)
 certAuthority.setup()
 
 
@@ -111,4 +115,4 @@ def print_filtered_traceback(error, package_name="certapi"):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, threaded=True)
+    app.run(host="0.0.0.0", port=8082, threaded=True)

@@ -162,7 +162,7 @@ class FilesystemKeyStore(KeyStore):
         return name  # Dummy ID since filesystem does not use numeric IDs
 
     def gen_key(self, name: str = None, size: int = 4096) -> RSAPrivateKey:
-        key = gen_key_rsa(size)
+        key = gen_key_secp256r1()
         self.save_key(key, name)
         return key
 
