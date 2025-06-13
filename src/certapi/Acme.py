@@ -11,8 +11,8 @@ import requests
 from .crypto import sign, digest_sha256, csr_to_der, jwk, get_algorithm_name
 from .util import b64_encode, b64_string
 
-# acme_url = os.environ.get("LETSENCRYPT_API", "https://acme-staging-v02.api.letsencrypt.org/directory")
-acme_url = os.environ.get("LETSENCRYPT_API", None)
+acme_url = os.environ.get("LETSENCRYPT_API", "https://acme-staging-v02.api.letsencrypt.org/directory")
+# acme_url = os.environ.get("LETSENCRYPT_API", None)
 
 
 class AcmeError(Exception):
@@ -402,5 +402,5 @@ class Challenge:
             if method["type"] == key:
                 return method
         raise AcmeError(
-            "'http-01' not found in challenges", {"response": self._data["challenges"]}, "Acme Challenge Verification"
+            f"'{key}' not found in challenges", {"response": self._data["challenges"]}, "Acme Challenge Verification"
         )

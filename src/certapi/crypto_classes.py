@@ -228,4 +228,13 @@ class ECDSAKey(Key):
         return self.key.sign(message, ec.ECDSA(algorithm))
 
     def sign_csr(self, csr):
-        return csr.sign(self.key, None)
+        key_size = self.key.curve.key_size
+        if key_size == 256:
+            algorithm = hashes.SHA256()
+        elif key_size == 384:
+            algorithm = hashes.SHA384()
+        elif key_size == 521:
+            algorithm = hashes.SHA512()
+        else:
+            raise ValueError(f"Unsupported curve with key size {key_size}")
+        return csr.sign(self.key, algorithm)
