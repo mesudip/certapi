@@ -31,8 +31,10 @@ def gen_key_secp256r1():
 def gen_key_ed25519():
     return ed25519.Ed25519PrivateKey.generate()
 
+
 def gen_key_ecdsa():
     return ec.generate_private_key(ec.SECP256R1())
+
 
 def get_algorithm_name(key):
     if isinstance(key, RSAPrivateKey):
@@ -136,16 +138,18 @@ def sign(key: Union[RSAPrivateKey, Ed25519PrivateKey, EllipticCurvePrivateKey], 
     elif isinstance(key, EllipticCurvePrivateKey):
         return key.sign(message, ec.ECDSA(hasher))
 
+
 def sign_for_jws(key, message, hasher=hashes.SHA256()):
     if isinstance(key, EllipticCurvePrivateKey):
         der_sig = key.sign(message, ec.ECDSA(hasher))
         r, s = utils.decode_dss_signature(der_sig)
         num_bytes = (key.curve.key_size + 7) // 8
-        r_bytes = r.to_bytes(num_bytes, 'big')
-        s_bytes = s.to_bytes(num_bytes, 'big')
+        r_bytes = r.to_bytes(num_bytes, "big")
+        s_bytes = s.to_bytes(num_bytes, "big")
         return r_bytes + s_bytes
     else:
-        return sign(key,message,hasher)
+        return sign(key, message, hasher)
+
 
 def sign_jws(key: RSAPrivateKey, data: object):
     pass

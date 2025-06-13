@@ -41,7 +41,7 @@ def register_account(url: str, email: str, key: ec.EllipticCurvePrivateKey):
     nonce = get_nonce(url)
     protected = get_protected(header, nonce, url + "/acme/new-account")
     signature = sign(protected, payload, key)
-    request = {
+    request = { 
         "protected": protected,
         "payload": json.dumps(payload),
         "signature": signature

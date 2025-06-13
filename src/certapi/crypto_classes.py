@@ -11,7 +11,8 @@ from .util import b64_string
 
 
 class Key(ABC):
-    key:rsa.RSAPrivateKey | ed25519.Ed25519PrivateKey | ec.EllipticCurvePrivateKey
+    key: rsa.RSAPrivateKey | ed25519.Ed25519PrivateKey | ec.EllipticCurvePrivateKey
+
     @abstractmethod
     def jwk(self):
         pass
@@ -24,9 +25,8 @@ class Key(ABC):
     def sign_csr(self, csr):
         pass
 
-
     @staticmethod
-    def generate(key_type:Literal["rsa", "ecdsa", "ed25519"])->'Key':
+    def generate(key_type: Literal["rsa", "ecdsa", "ed25519"]) -> "Key":
         if key_type == "rsa":
             return RSAKey.generate()
         elif key_type == "ecdsa":
@@ -97,7 +97,7 @@ class Key(ABC):
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
-    )->x509.CertificateSigningRequest:
+    ) -> x509.CertificateSigningRequest:
         """
         Create a Certificate Signing Request (CSR) with the specified parameters.
 

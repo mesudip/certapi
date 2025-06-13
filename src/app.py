@@ -13,10 +13,10 @@ app = Flask(__name__)
 app.config["challenges"] = {}
 
 key_store = FilesystemKeyStore("db")
-dns_stores=[]
+dns_stores = []
 if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
     dns_stores.append(CloudflareChallengeStore())
-certAuthority = CertAuthority(challenge_store, key_store,dns_stores=dns_stores)
+certAuthority = CertAuthority(challenge_store, key_store, dns_stores=dns_stores)
 certAuthority.setup()
 
 

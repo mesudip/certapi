@@ -4,9 +4,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519
 from certapi.crypto_classes import Key
-from certapi.custom_certauthority import CertificateIssuer# Replace with actual import
-from certapi.crypto import gen_key_ed25519, gen_key_rsa,gen_key_secp256r1
-
+from certapi.custom_certauthority import CertificateIssuer  # Replace with actual import
+from certapi.crypto import gen_key_ed25519, gen_key_rsa, gen_key_secp256r1
 
 
 @pytest.mark.parametrize("ca_key_type", ["rsa", "ecdsa", "ed25519"])
@@ -26,7 +25,7 @@ def test_ca_and_leaf_cert_all_key_pairs(ca_key_type, csr_key_type):
 
     # Generate leaf/CSR key
     leaf_key = Key.generate(csr_key_type)
-    csr=leaf_key.create_csr("example.com")
+    csr = leaf_key.create_csr("example.com")
 
     # Build subject and CSR
     # subject = ca._build_name({"common_name": "example.com"})

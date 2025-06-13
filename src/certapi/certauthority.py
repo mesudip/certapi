@@ -24,8 +24,13 @@ from .util import b64_string
 
 
 class CertAuthority:
-    def __init__(self, challenge_store: challenge.ChallengeStore, key_store: KeyStore, acme_url=None,
-                 dns_stores: List[challenge.ChallengeStore] = None):
+    def __init__(
+        self,
+        challenge_store: challenge.ChallengeStore,
+        key_store: KeyStore,
+        acme_url=None,
+        dns_stores: List[challenge.ChallengeStore] = None,
+    ):
         self.acme = Acme(key_store.account_key, url=acme_url)
         self.key_store = key_store
         self.challengesStore: challenge.ChallengeStore = challenge_store
@@ -46,14 +51,14 @@ class CertAuthority:
         existing = {c[0]: c[1] for c in [(h, self.key_store.get_cert(h)) for h in host] if c[1] is not None}
         missing = [h for h in host if h not in existing]
         if len(missing) > 0:
-            has_wildcard=False
+            has_wildcard = False
             # Determine which challenge store to use
             challenge_store_to_use = self.challengesStore
             for h in missing:
                 if h.startswith("*."):  # Wildcard domain
-                    has_wildcard=True
+                    has_wildcard = True
                     found_dns_store = False
-                    
+
                     for dns_store in self.dns_stores:
                         if dns_store.has_domain(h.lstrip("*.")):  # Check if the DNS store can handle the base domain
                             challenge_store_to_use = dns_store
@@ -61,7 +66,7 @@ class CertAuthority:
                             break
                     if not found_dns_store:
                         raise Exception(f"No DNS challenge store found for wildcard domain {h}")
-                    break # Assuming all domains in a single request will use the same challenge type
+                    break  # Assuming all domains in a single request will use the same challenge type
 
             private_key = crypto.gen_key_secp256r1()
             order = self.acme.create_authorized_order(missing)
@@ -72,10 +77,14 @@ class CertAuthority:
                 print("[ Challenge ]", c.token, "=", c.authorization_key)
                 # For DNS-01 challenges, the key should be _acme-challenge.<domain>
                 challenge_name = f"_acme-challenge.{c.domain}" if has_wildcard else c.token
-                
+
                 # For DNS-01 challenges, the value is the SHA256 hash of the authorization_key, base64url encoded
-                challenge_value = b64_string(digest_sha256(c.authorization_key.encode('utf8'))) if has_wildcard else c.authorization_key
-                
+                challenge_value = (
+                    b64_string(digest_sha256(c.authorization_key.encode("utf8")))
+                    if has_wildcard
+                    else c.authorization_key
+                )
+
                 challenge_store_to_use.save_challenge(challenge_name, challenge_value, c.domain)
 
             # Add an initial sleep to allow DNS propagation

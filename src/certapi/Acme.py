@@ -177,7 +177,7 @@ def request(method, step: str, url: str, json=None, headers=None, throw=True) ->
             step,
         )
     if 199 <= res.status_code > 299:
-        
+
         [print(x, y) for (x, y) in res.headers.items()]
         print("Response:", res.text)
         json_data = None
@@ -359,7 +359,7 @@ class Challenge:
         challenge = self.get_challenge()
         self.token = challenge["token"]
         self.verified = challenge["status"] == "valid"
-        self.domain = data["identifier"]["value"] # Add domain attribute
+        self.domain = data["identifier"]["value"]  # Add domain attribute
 
         jwk_json = json.dumps(self._acme.jwk, sort_keys=True, separators=(",", ":"))
         thumbprint = b64_encode(digest_sha256(jwk_json.encode("utf8")))
@@ -367,9 +367,11 @@ class Challenge:
 
         self.url = "http://{0}/.well-known/acme-challenge/{1}".format(data["identifier"]["value"], self.token)
 
-    def verify(self,dns=False) -> bool:
+    def verify(self, dns=False) -> bool:
         if not self.verified:
-            response = self._acme._signed_req(self.get_challenge(key='dns-01' if dns else "http-01")["url"], {}, step="Verify Challenge", throw=False)
+            response = self._acme._signed_req(
+                self.get_challenge(key="dns-01" if dns else "http-01")["url"], {}, step="Verify Challenge", throw=False
+            )
             if response.status_code == 200 and response.json()["status"] == "valid":
                 self.verified = True
                 return True
@@ -401,14 +403,16 @@ class Challenge:
                 return False
 
     def get_challenge(self, key="http-01"):
-        challenges=self._data["challenges"]
+        challenges = self._data["challenges"]
         for method in challenges:
             if method["type"] == key:
                 return method
-        if len(challenges)==1:
+        if len(challenges) == 1:
             return challenges[0]
-        
-        ch_types=[ x["type"] for x  in self._data["challenges"]]
+
+        ch_types = [x["type"] for x in self._data["challenges"]]
         raise AcmeError(
-            f"'{key}' not found in challenges. available:{str(ch_types)}", {"response": self._data["challenges"]}, "Acme Challenge Verification"
+            f"'{key}' not found in challenges. available:{str(ch_types)}",
+            {"response": self._data["challenges"]},
+            "Acme Challenge Verification",
         )

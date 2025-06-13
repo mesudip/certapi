@@ -2,7 +2,8 @@ from typing import Optional, List, Union
 from datetime import datetime, timedelta, timezone
 from cryptography import x509
 from cryptography.x509.oid import NameOID
-from certapi.crypto_classes import Key, RSAKey, ECDSAKey,Ed25519Key  # Assuming Key classes are in crypto_keys module
+from certapi.crypto_classes import Key, RSAKey, ECDSAKey, Ed25519Key  # Assuming Key classes are in crypto_keys module
+
 
 class CertificateIssuer:
     def __init__(
