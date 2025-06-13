@@ -30,6 +30,8 @@ def gen_key_secp256r1():
 def gen_key_ed25519():
     return ed25519.Ed25519PrivateKey.generate()
 
+def gen_key_ecdsa():
+    return ec.generate_private_key(ec.SECP256R1())
 
 def get_algorithm_name(key):
     if isinstance(key, RSAPrivateKey):
@@ -136,7 +138,7 @@ def sign_jws(key: RSAPrivateKey, data: object):
     pass
 
 
-def key_to_der(key: [RSAPrivateKey, Ed25519PrivateKey, EllipticCurvePrivateKey]) -> bytes:
+def key_to_der(key: RSAPrivateKey | Ed25519PrivateKey | EllipticCurvePrivateKey) -> bytes:
     return key.private_bytes(
         encoding=serialization.Encoding.DER, format=serialization.PrivateFormat.PKCS8, encryption_algorithm=__no_enc
     )
