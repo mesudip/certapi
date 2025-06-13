@@ -141,9 +141,9 @@ class SqliteKeyStore(KeyStore):
 
 
 class FilesystemKeyStore(KeyStore):
-    def __init__(self, base_dir="."):
-        self.keys_dir = os.path.join(base_dir, "keys")
-        self.certs_dir = os.path.join(base_dir, "certs")
+    def __init__(self, base_dir=".", keys_dir_name="keys", certs_dir_name="certs"):
+        self.keys_dir = os.path.join(base_dir, keys_dir_name)
+        self.certs_dir = os.path.join(base_dir, certs_dir_name)
         os.makedirs(self.keys_dir, exist_ok=True)
         os.makedirs(self.certs_dir, exist_ok=True)
         self._init_account_key()
@@ -192,6 +192,9 @@ class FilesystemKeyStore(KeyStore):
         with open(key_path, "rb") as f:
             key_content = f.read()
         for domain in domains:
+            if name.endswith(".selfsigned"):
+                domain = domain + ".selfsigned"
+
             if domain != private_key_id:
                 with open(os.path.join(self.keys_dir, f"{domain}.key"), "wb") as f:
                     f.write(key_content)

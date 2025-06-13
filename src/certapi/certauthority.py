@@ -30,11 +30,13 @@ class CertAuthority:
         key_store: KeyStore,
         acme_url=None,
         dns_stores: List[challenge.ChallengeStore] = None,
+        self_verify_challenge=False,
     ):
         self.acme = Acme(key_store.account_key, url=acme_url)
         self.key_store = key_store
         self.challengesStore: challenge.ChallengeStore = challenge_store
         self.dns_stores = dns_stores if dns_stores is not None else []
+        self.self_verify_challenge = self_verify_challenge
 
     def setup(self):
         self.acme.setup()
@@ -93,7 +95,8 @@ class CertAuthority:
                 time.sleep(10)
 
             for c in challenges:
-                # c.self_verify()
+                if self.self_verify_challenge and not has_wildcard:
+                    c.self_verify()
                 c.verify(dns=has_wildcard)
             end = time.time() + 60  # Increase overall timeout
             source: List[Challenge] = [x for x in challenges]
