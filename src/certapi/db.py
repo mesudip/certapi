@@ -191,8 +191,9 @@ class FilesystemKeyStore(KeyStore):
         key_path = os.path.join(self.keys_dir, f"{private_key_id}.key")
         with open(key_path, "rb") as f:
             key_content = f.read()
+        
         for domain in domains:
-            if name.endswith(".selfsigned"):
+            if name is not None and name.endswith(".selfsigned"):
                 domain = domain + ".selfsigned"
 
             if domain != private_key_id:
