@@ -1,6 +1,7 @@
 __pycache__/
 *.pem
 *.crt
+*.csr
 *.db
 *.sqlite3
 *.pyc
@@ -14,3 +15,8 @@ challenges/
 acme-challenges/
 build/
 src/certapi.egg-info
+.well-known/
+.vscode
+.venv
+.env
+.D
