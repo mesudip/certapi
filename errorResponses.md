@@ -144,7 +144,7 @@ https://acme-staging-v02.api.letsencrypt.org/acme/authz/177930184/15532308974
 ```
 
 ### 5. Rate limit exceeded
-Interesting thing about this error is that if I add new domain add add a combined certificate, the rate limit won't be applicable.
+Interesting thing about this error is that if I add new domain and  request a combined certificate, the rate limit won't be applicable.
 ```
 https://acme-v02.api.letsencrypt.org/acme/new-order
 {

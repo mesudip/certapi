@@ -1,6 +1,7 @@
 import os
 import re
 import threading
+import time
 from typing import Union, List, Tuple
 import json
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
@@ -81,7 +82,6 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             "resolved": validation_record["addressesResolved"],
                             "used": validation_record["addressUsed"],
                         }
-                        err_detail: str = error["detail"]
                         if error["type"] == "urn:ietf:params:acme:error:connection":
                             if "Timeout during connect" in err_detail:
                                 error["connect"] = {"error": "Timeout"}
@@ -276,6 +276,7 @@ class Acme:
             response = post(step, url, json=payload, headers={"Content-Type": "application/jose+json"}, throw=throw)
         except AcmeError as e:
             if e.can_retry and depth <= 0:
+                time.sleep(2)
                 return self._signed_req(url, payload, depth + 1, step, throw)
             else:
                 raise e
