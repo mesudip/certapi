@@ -326,7 +326,7 @@ class Order:
         self.status = self._data["status"]
         return response
 
-    def get_certificate(self) -> Certificate:
+    def get_certificate(self) -> Tuple[str, List[Certificate]]:
         if self.status == "processing":
             raise ValueError(
                 "Order is still in 'processing' state! Wait until the order is finalized, and  call `Order.refresh()`  to update the state"
@@ -337,8 +337,8 @@ class Order:
         certificate_res = self._acme._signed_req(
             self._data["certificate"], step="Get Certificate from Successful Order"
         )
-        certificate = crypto.x509.load_pem_x509_certificate(certificate_res.content)
-        return certificate
+        certificate = crypto.x509.load_pem_x509_certificates(certificate_res.content)
+        return ( certificate_res.content, certificate)
 
     def finalize(self, csr: CertificateSigningRequest):
         """

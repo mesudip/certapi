@@ -121,10 +121,10 @@ class CertAuthority:
                 order.refresh()  # is this refresh necessary?
 
                 if order.status == "valid":
-                    certificate = order.get_certificate()
+                    fullchain_cert,certificate =  order.get_certificate()
                     key_id = self.key_store.save_key(private_key, missing[0])
                     cert_id = self.key_store.save_cert(key_id, certificate, missing)
-                    issued_cert = IssuedCert(key_to_pem(private_key), certificate, missing)
+                    issued_cert = IssuedCert(key_to_pem(private_key), fullchain_cert, missing)
                     # Clean up challenges after successful certificate issuance
                     for c in challenges:
                         challenge_name = f"_acme-challenge.{c.domain}" if has_wildcard else c.token
@@ -145,22 +145,26 @@ class CertAuthority:
             return createExistingResponse(existing, [])
 
 
-def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, Certificate]], issued_certs: List["IssuedCert"]):
+def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, Certificate | str]], issued_certs: List["IssuedCert"]):
     certs = []
     certMap = {}
+
     for h, (id, key, cert) in existing.items():
         if id in certMap:
             certMap[id][0].append(h)
         else:
+            cert_pem = cert if isinstance(cert, str) else cert_to_pem(cert).decode("utf-8")
             certMap[id] = (
                 [h],
                 key.to_pem().decode("utf-8"),
-                cert_to_pem(cert).decode("utf-8"),
+                cert_pem,
             )
+
     for hosts, key, cert in certMap.values():
         certs.append(IssuedCert(key, cert, hosts))
 
     return CertificateResponse(certs, issued_certs)
+
 
 
 class CertificateResponse:

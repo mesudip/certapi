@@ -21,7 +21,7 @@ class KeyStore(ABC):
         pass
 
     @abstractmethod
-    def save_cert(self, private_key_id: int, cert: Certificate, domains: List[str], name: str = None) -> int:
+    def save_cert(self, private_key_id: int, cert: Certificate|str, domains: List[str], name: str = None) -> int:
         pass
 
     @abstractmethod
@@ -91,12 +91,12 @@ class SqliteKeyStore(KeyStore):
         self.save_key(key, name)
         return key
 
-    def save_cert(self, private_key_id: int, cert: Certificate, domains: List[str], name: str = None) -> int:
+    def save_cert(self, private_key_id: int, cert: Certificate|str, domains: List[str], name: str = None) -> int:
         conn = self._get_db_connection()
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO certificates (name, priv_id, content) VALUES (?, ?, ?)",
-            (name, private_key_id, cert.public_bytes(serialization.Encoding.DER)),
+            (name, private_key_id, cert_to_der(cert)),
         )
         cert_id = cur.lastrowid
 
@@ -182,32 +182,42 @@ class FilesystemKeyStore(KeyStore):
             return cert_from_pem(cert_data)
         return None
 
-    def save_cert(self, private_key_id: str, cert: Certificate, domains: list, name: str = None) -> int:
+
+    def save_cert(self, private_key_id: str, cert: Certificate | str, domains: list, name: str = None) -> int:
+        def get_cert_pem(cert) -> bytes:
+            return cert.encode() if isinstance(cert, str) else cert_to_pem(cert)
+
+        cert_pem = get_cert_pem(cert)
+
         if name:
             cert_path = os.path.join(self.certs_dir, f"{name}.crt")
             with open(cert_path, "wb") as f:
-                f.write(cert_to_pem(cert))
+                f.write(cert_pem)
+
         key_content = None
         key_path = os.path.join(self.keys_dir, f"{private_key_id}.key")
         with open(key_path, "rb") as f:
             key_content = f.read()
-        
-        for domain in domains:
-            if name is not None and name.endswith(".selfsigned"):
-                domain = domain + ".selfsigned"
 
-            if domain != private_key_id:
-                with open(os.path.join(self.keys_dir, f"{domain}.key"), "wb") as f:
+        for domain in domains:
+            domain_name = domain
+            if name is not None and name.endswith(".selfsigned"):
+                domain_name += ".selfsigned"
+
+            if domain_name != private_key_id:
+                with open(os.path.join(self.keys_dir, f"{domain_name}.key"), "wb") as f:
                     f.write(key_content)
-            domain_cert_path = os.path.join(self.certs_dir, f"{domain}.crt")
+
+            domain_cert_path = os.path.join(self.certs_dir, f"{domain_name}.crt")
             with open(domain_cert_path, "wb") as f:
-                f.write(cert_to_pem(cert))
+                f.write(cert_pem)
+
 
         return name if name else domains[0]  # Dummy ID since filesystem does not use numeric IDs
 
-    def get_cert(self, domain: str) -> None | Tuple[str, Key, Certificate]:
-        cert_path = os.path.join(self.certs_dir, f"{domain}.crt")
-        key_path = os.path.join(self.keys_dir, f"{domain}.key")
+    def get_cert(self, name: str) -> None | Tuple[str, Key, Certificate]:
+        cert_path = os.path.join(self.certs_dir, f"{name}.crt")
+        key_path = os.path.join(self.keys_dir, f"{name}.key")
         key = None
         cert = None
         if os.path.exists(key_path):
@@ -226,7 +236,7 @@ class FilesystemKeyStore(KeyStore):
 
         if cert is None or key is None:
             return None
-        return (domain, key, cert)
+        return (name, key, cert)
 
 
 class PostgresKeyStore(KeyStore):

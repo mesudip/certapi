@@ -106,6 +106,11 @@ def key_from_pem(data: bytes):
 def cert_from_pem(data: bytes) -> Certificate:
     return x509.load_pem_x509_certificate(data)
 
+def certs_from_pem(data: bytes) -> List[Certificate]:
+    return x509.load_pem_x509_certificates(data)
+
+def cert_to_der(cert):
+    return cert.public_bytes(serialization.Encoding.DER)
 
 def cert_to_pem(cert):
     return cert.public_bytes(serialization.Encoding.PEM)

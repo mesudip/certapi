@@ -1,0 +1,6 @@
+## Fix the ssl warning in nginx
+Chatgpt says that when obtaining cert, there is alternate link that contains the fullchain certificate.
+Link: <https://acme-v02.api.letsencrypt.org/acme/cert/XYZ>;rel="alternate"
+
+## Create class for FullChain certs
+It's simply array of certificates, but it changes serialization/deserilization logic 
