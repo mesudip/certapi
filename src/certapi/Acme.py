@@ -72,8 +72,11 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             error["dns"] = {"error": "DNS record doesn't exist"}
                             error["hostname"] = re.findall(r"looking up [A-Z]+ for ([\w.-]+)", err_detail)[0]
                             message = error["hostname"] + " doesn't have a valid DNS record"
-                        else:
+                        elif err_detail:
                             error["dns"] = {"error": err_detail}
+                            message = err_detail
+                        else:
+                            error["dns"] = {"error": error}
                             message = err_detail
                     else:
                         validation_record = validation_record[0]
@@ -103,9 +106,11 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                     + validation_record["port"]
                                     + "] Connection Refused (Is http server running?)"
                                 )
-                            else:
+                            elif err_detail:
                                 message = err_detail
-                        else:
+                            else:
+                                message = error
+                        elif err_detail:
                             pattern = r'Invalid response from .*?: "(.*)"'
 
                             match = re.search(pattern, err_detail)
@@ -121,6 +126,8 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                 )
                             else:
                                 message = err_detail
+                        else:
+                            message=error
 
             if message is None:
                 if res_json.get("detail"):
