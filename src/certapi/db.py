@@ -21,11 +21,11 @@ class KeyStore(ABC):
         pass
 
     @abstractmethod
-    def save_cert(self, private_key_id: int, cert: Certificate|str, domains: List[str], name: str = None) -> int:
+    def save_cert(self, private_key_id: int, cert: Certificate|str | List[Certificate] , domains: List[str], name: str = None) -> int:
         pass
 
     @abstractmethod
-    def get_cert(self, domain: str) -> None | Tuple[int | str, Key, Certificate]:
+    def get_cert(self, domain: str) -> None | Tuple[int | str, Key, Certificate | List[Certificate]]:
         pass
 
 
@@ -91,12 +91,20 @@ class SqliteKeyStore(KeyStore):
         self.save_key(key, name)
         return key
 
-    def save_cert(self, private_key_id: int, cert: Certificate|str, domains: List[str], name: str = None) -> int:
+    def save_cert(self, private_key_id: int, cert: Certificate|str | List[Certificate], domains: List[str], name: str = None) -> int:
         conn = self._get_db_connection()
         cur = conn.cursor()
+        
+        if isinstance(cert, list):
+            cert_data = certs_to_pem(cert)
+        elif isinstance(cert, str):
+            cert_data = cert.encode()
+        else:
+            cert_data = cert_to_pem(cert)
+
         cur.execute(
             "INSERT INTO certificates (name, priv_id, content) VALUES (?, ?, ?)",
-            (name, private_key_id, cert_to_der(cert)),
+            (name, private_key_id, cert_data),
         )
         cert_id = cur.lastrowid
 
@@ -106,7 +114,7 @@ class SqliteKeyStore(KeyStore):
         conn.commit()
         return cert_id
 
-    def get_cert(self, domain: str) -> None | Tuple[int | str, Key, Certificate]:
+    def get_cert(self, domain: str) -> None | Tuple[int | str, Key, List[Certificate]]:
         conn = self._get_db_connection()
         cur = conn.cursor()
         cur.execute(
@@ -123,7 +131,11 @@ class SqliteKeyStore(KeyStore):
 
         cur.close()
 
-        return res if res is None else (res[0], Key.from_der(res[1]), cert_from_der(res[2]))
+        if res is None:
+            return None
+        
+        certs = certs_from_pem(res[2])
+        return (res[0], Key.from_der(res[1]), certs)
 
     def _init_account_key(self) -> RSAPrivateKey:
         acme_key_name = "ACME Account Key"
@@ -174,20 +186,22 @@ class FilesystemKeyStore(KeyStore):
             return key_from_pem(key_data)
         return None
 
-    def find_cert(self, name: str) -> Union[None, Certificate]:
+    def find_cert(self, name: str) -> Union[None, List[Certificate]]:
         cert_path = os.path.join(self.certs_dir, f"{name}.crt")
         if os.path.exists(cert_path):
             with open(cert_path, "rb") as f:
                 cert_data = f.read()
-            return cert_from_pem(cert_data)
+            return certs_from_pem(cert_data)
         return None
 
 
-    def save_cert(self, private_key_id: str, cert: Certificate | str, domains: list, name: str = None) -> int:
-        def get_cert_pem(cert) -> bytes:
-            return cert.encode() if isinstance(cert, str) else cert_to_pem(cert)
-
-        cert_pem = get_cert_pem(cert)
+    def save_cert(self, private_key_id: str, cert: Certificate | str | List[Certificate], domains: list, name: str = None) -> int:
+        if isinstance(cert, list):
+            cert_pem = certs_to_pem(cert)
+        elif isinstance(cert, str):
+            cert_pem = cert.encode()
+        else:
+            cert_pem = cert_to_pem(cert)
 
         if name:
             cert_path = os.path.join(self.certs_dir, f"{name}.crt")
@@ -215,7 +229,7 @@ class FilesystemKeyStore(KeyStore):
 
         return name if name else domains[0]  # Dummy ID since filesystem does not use numeric IDs
 
-    def get_cert(self, name: str) -> None | Tuple[str, Key, Certificate]:
+    def get_cert(self, name: str) -> None | Tuple[str, Key, List[Certificate]]:
         cert_path = os.path.join(self.certs_dir, f"{name}.crt")
         key_path = os.path.join(self.keys_dir, f"{name}.key")
         key = None
@@ -230,7 +244,7 @@ class FilesystemKeyStore(KeyStore):
         if os.path.exists(cert_path):
             try:
                 with open(cert_path, "rb") as f:
-                    cert = cert_from_pem(f.read())
+                    cert = certs_from_pem(f.read())
             except ValueError:
                 pass
 
@@ -329,13 +343,20 @@ class PostgresKeyStore(KeyStore):
         self.save_key(key, name)
         return key
 
-    def save_cert(self, private_key_id: int, cert: Certificate, domains: List[str], name: str = None) -> int:
+    def save_cert(self, private_key_id: int, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None) -> int:
         """Saves a certificate along with associated domains."""
         with self.get_connection() as conn:
+            if isinstance(cert, list):
+                cert_data = certs_to_pem(cert)
+            elif isinstance(cert, str):
+                cert_data = cert.encode()
+            else:
+                cert_data = cert_to_pem(cert)
+
             # Insert certificate and associated domains directly
             conn.execute(
                 "INSERT INTO certificates (name, priv_id, content) VALUES (%s, %s, %s) RETURNING id",
-                (name, private_key_id, cert.public_bytes(serialization.Encoding.DER)),
+                (name, private_key_id, cert_data),
             )
             cert_id = conn.fetchone()[0]
 
@@ -345,7 +366,7 @@ class PostgresKeyStore(KeyStore):
 
         return cert_id
 
-    def get_cert(self, domain: str) -> Optional[Tuple[int, RSAPrivateKey, Certificate]]:
+    def get_cert(self, domain: str) -> Optional[Tuple[int, RSAPrivateKey, List[Certificate]]]:
         """Fetches a certificate and its associated private key for a domain."""
         with self.get_connection() as conn:
             # Directly execute and fetch result
@@ -362,7 +383,7 @@ class PostgresKeyStore(KeyStore):
             res = conn.fetchone()
 
             if res:
-                return (res[0], Key.from_der(res[1]), cert_from_der(res[2]))
+                return (res[0], Key.from_der(res[1]), certs_from_pem(res[2]))
         return None
 
     def _init_account_key(self) -> RSAPrivateKey:

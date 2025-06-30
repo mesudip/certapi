@@ -123,7 +123,7 @@ class CertAuthority:
                 if order.status == "valid":
                     fullchain_cert,certificate =  order.get_certificate()
                     key_id = self.key_store.save_key(private_key, missing[0])
-                    cert_id = self.key_store.save_cert(key_id, certificate[0], missing)
+                    cert_id = self.key_store.save_cert(key_id, certificate, missing)
                     issued_cert = IssuedCert(key_to_pem(private_key), fullchain_cert, missing)
                     # Clean up challenges after successful certificate issuance
                     for c in challenges:
@@ -145,7 +145,7 @@ class CertAuthority:
             return createExistingResponse(existing, [])
 
 
-def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, Certificate | str]], issued_certs: List["IssuedCert"]):
+def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]], issued_certs: List["IssuedCert"]):
     certs = []
     certMap = {}
 
@@ -153,7 +153,13 @@ def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, Certificate
         if id in certMap:
             certMap[id][0].append(h)
         else:
-            cert_pem = cert if isinstance(cert, str) else cert_to_pem(cert).decode("utf-8")
+            if isinstance(cert, str):
+                cert_pem = cert
+            elif isinstance(cert, list):
+                cert_pem = certs_to_pem(cert).decode("utf-8")
+            else:
+                cert_pem = cert_to_pem(cert).decode("utf-8")
+            
             certMap[id] = (
                 [h],
                 key.to_pem().decode("utf-8"),
@@ -189,15 +195,19 @@ class CertificateResponse:
 
 
 class IssuedCert:
-    def __init__(self, key: str | Key, cert: str | Certificate, domains: [str]):
+    def __init__(self, key: str | Key, cert: str | Certificate | List[Certificate], domains: [str]):
         if isinstance(key, Key):
             key = key.to_pem().decode("utf-8")
         elif isinstance(key, bytes):
             key = key.decode("utf-8")
-        if isinstance(cert, Certificate):
+        
+        if isinstance(cert, list):
+            cert = certs_to_pem(cert).decode("utf-8")
+        elif isinstance(cert, Certificate):
             cert = cert_to_pem(cert).decode("utf-8")
         elif isinstance(cert, bytes):
             cert = cert.decode("utf-8")
+
         self.privateKey = key
         self.certificate = cert
         self.domains = domains
