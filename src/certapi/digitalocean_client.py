@@ -4,10 +4,9 @@ from os import getenv
 from urllib.request import urlopen, Request  # Python 3
 
 
-
 class DigitalOcean(object):
-    def __init__(self,api_key=None):
-        self.token=api_key
+    def __init__(self, api_key=None):
+        self.token = api_key
         self.api = "https://api.digitalocean.com/v2/domains"
         if not self.token:
             self.token = getenv("DIGITALOCEAN_API_TOKEN")
@@ -75,12 +74,12 @@ class DigitalOcean(object):
         response = urlopen(Request(api, headers=request_headers))
         if response.getcode() != 200:
             raise Exception(json.loads(response.read().decode("utf8")))
-        
+
         all_records = json.loads(response.read().decode("utf8"))["domain_records"]
-        
+
         if name_filter:
             filtered_records = [r for r in all_records if r["name"] == name_filter and r["type"] == "TXT"]
         else:
             filtered_records = [r for r in all_records if r["type"] == "TXT"]
-            
+
         return filtered_records

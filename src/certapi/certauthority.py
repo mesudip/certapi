@@ -17,7 +17,7 @@ from requests import Response
 from . import Acme, Challenge, Order
 from . import crypto
 from . import challenge
-from .crypto import cert_to_pem, key_to_pem, digest_sha256
+from .crypto import cert_to_pem, certs_to_pem, key_to_pem, digest_sha256
 from .crypto_classes import Key
 from .db import KeyStore
 from .util import b64_string
@@ -121,7 +121,7 @@ class CertAuthority:
                 order.refresh()  # is this refresh necessary?
 
                 if order.status == "valid":
-                    fullchain_cert,certificate =  order.get_certificate()
+                    fullchain_cert, certificate = order.get_certificate()
                     key_id = self.key_store.save_key(private_key, missing[0])
                     cert_id = self.key_store.save_cert(key_id, certificate, missing)
                     issued_cert = IssuedCert(key_to_pem(private_key), fullchain_cert, missing)
@@ -145,7 +145,9 @@ class CertAuthority:
             return createExistingResponse(existing, [])
 
 
-def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]], issued_certs: List["IssuedCert"]):
+def createExistingResponse(
+    existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]], issued_certs: List["IssuedCert"]
+):
     certs = []
     certMap = {}
 
@@ -159,7 +161,7 @@ def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, List[Certif
                 cert_pem = certs_to_pem(cert).decode("utf-8")
             else:
                 cert_pem = cert_to_pem(cert).decode("utf-8")
-            
+
             certMap[id] = (
                 [h],
                 key.to_pem().decode("utf-8"),
@@ -170,7 +172,6 @@ def createExistingResponse(existing: Dict[str, Tuple[int | str, Key, List[Certif
         certs.append(IssuedCert(key, cert, hosts))
 
     return CertificateResponse(certs, issued_certs)
-
 
 
 class CertificateResponse:
@@ -200,7 +201,7 @@ class IssuedCert:
             key = key.to_pem().decode("utf-8")
         elif isinstance(key, bytes):
             key = key.decode("utf-8")
-        
+
         if isinstance(cert, list):
             cert = certs_to_pem(cert).decode("utf-8")
         elif isinstance(cert, Certificate):

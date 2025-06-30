@@ -21,7 +21,9 @@ class KeyStore(ABC):
         pass
 
     @abstractmethod
-    def save_cert(self, private_key_id: int, cert: Certificate|str | List[Certificate] , domains: List[str], name: str = None) -> int:
+    def save_cert(
+        self, private_key_id: int, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
+    ) -> int:
         pass
 
     @abstractmethod
@@ -91,10 +93,12 @@ class SqliteKeyStore(KeyStore):
         self.save_key(key, name)
         return key
 
-    def save_cert(self, private_key_id: int, cert: Certificate|str | List[Certificate], domains: List[str], name: str = None) -> int:
+    def save_cert(
+        self, private_key_id: int, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
+    ) -> int:
         conn = self._get_db_connection()
         cur = conn.cursor()
-        
+
         if isinstance(cert, list):
             cert_data = certs_to_pem(cert)
         elif isinstance(cert, str):
@@ -133,7 +137,7 @@ class SqliteKeyStore(KeyStore):
 
         if res is None:
             return None
-        
+
         certs = certs_from_pem(res[2])
         return (res[0], Key.from_der(res[1]), certs)
 
@@ -194,8 +198,9 @@ class FilesystemKeyStore(KeyStore):
             return certs_from_pem(cert_data)
         return None
 
-
-    def save_cert(self, private_key_id: str, cert: Certificate | str | List[Certificate], domains: list, name: str = None) -> int:
+    def save_cert(
+        self, private_key_id: str, cert: Certificate | str | List[Certificate], domains: list, name: str = None
+    ) -> int:
         if isinstance(cert, list):
             cert_pem = certs_to_pem(cert)
         elif isinstance(cert, str):
@@ -225,7 +230,6 @@ class FilesystemKeyStore(KeyStore):
             domain_cert_path = os.path.join(self.certs_dir, f"{domain_name}.crt")
             with open(domain_cert_path, "wb") as f:
                 f.write(cert_pem)
-
 
         return name if name else domains[0]  # Dummy ID since filesystem does not use numeric IDs
 
@@ -343,7 +347,9 @@ class PostgresKeyStore(KeyStore):
         self.save_key(key, name)
         return key
 
-    def save_cert(self, private_key_id: int, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None) -> int:
+    def save_cert(
+        self, private_key_id: int, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
+    ) -> int:
         """Saves a certificate along with associated domains."""
         with self.get_connection() as conn:
             if isinstance(cert, list):

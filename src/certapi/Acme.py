@@ -127,7 +127,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             else:
                                 message = err_detail
                         else:
-                            message=error
+                            message = error
 
             if message is None:
                 if res_json.get("detail"):
@@ -345,7 +345,7 @@ class Order:
             self._data["certificate"], step="Get Certificate from Successful Order"
         )
         certificate = crypto.x509.load_pem_x509_certificates(certificate_res.content)
-        return ( certificate_res.content, certificate)
+        return (certificate_res.content, certificate)
 
     def finalize(self, csr: CertificateSigningRequest):
         """

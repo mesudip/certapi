@@ -34,7 +34,7 @@ class DigitalOceanChallengeStore(ChallengeStore):
         records = self.digitalocean.list_records(base_domain, name_filter=key)
         for record in records:
             if record["name"] == key:
-                return record["data"] # DigitalOcean API returns 'data' for TXT record content
+                return record["data"]  # DigitalOcean API returns 'data' for TXT record content
         return None  # Return None if not found, as per ChallengeStore's __getitem__ behavior
 
     def delete_challenge(self, key: str, domain: str):
