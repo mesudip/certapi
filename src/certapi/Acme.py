@@ -321,7 +321,7 @@ class Order:
         self.url = url
         self._data = data
         self.all_challenges = challenges
-        self._acme = acme
+        self._acme:Acme = acme
         self.status = "pending"
 
     def remaining_challenges(self) -> List["Challenge"]:
@@ -344,7 +344,7 @@ class Order:
         certificate_res = self._acme._signed_req(
             self._data["certificate"], step="Get Certificate from Successful Order"
         )
-        certificate = crypto.x509.load_pem_x509_certificates(certificate_res.content)
+        certificate = crypto.x509.load_pem_x509_certificates(certificate_res.text)
         return (certificate_res.content, certificate)
 
     def finalize(self, csr: CertificateSigningRequest):
@@ -365,7 +365,7 @@ class Challenge:
         self._acme = acme
         self._data = data
         challenge = self.get_challenge()
-        self.token = challenge["token"]
+        self.token:str = challenge["token"]
         self.verified = challenge["status"] == "valid"
         self.domain = data["identifier"]["value"]  # Add domain attribute
 
