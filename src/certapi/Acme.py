@@ -344,8 +344,8 @@ class Order:
         certificate_res = self._acme._signed_req(
             self._data["certificate"], step="Get Certificate from Successful Order"
         )
-        certificate = crypto.x509.load_pem_x509_certificates(certificate_res.text)
-        return (certificate_res.content, certificate)
+        certificate = crypto.x509.load_pem_x509_certificates(certificate_res.content)
+        return (certificate_res.text, certificate)
 
     def finalize(self, csr: CertificateSigningRequest):
         """
