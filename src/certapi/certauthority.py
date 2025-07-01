@@ -123,7 +123,7 @@ class CertAuthority:
                 if order.status == "valid":
                     fullchain_cert, certificate = order.get_certificate()
                     key_id = self.key_store.save_key(private_key, missing[0])
-                    cert_id = self.key_store.save_cert(key_id, certificate, missing)
+                    cert_id = self.key_store.save_cert(key_id, fullchain_cert, missing)
                     issued_cert = IssuedCert(key_to_pem(private_key), fullchain_cert, missing)
                     # Clean up challenges after successful certificate issuance
                     for c in challenges:
