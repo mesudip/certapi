@@ -7,7 +7,7 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .crypto import key_to_der, key_to_pem
-from .util import b64_string
+from certapi.util import b64_string
 
 
 class Key(ABC):
@@ -122,10 +122,13 @@ class Key(ABC):
             "common_name": domain,
             "user_id": user_id or domain,
         }
-        subject = self._build_name(subject_fields, include_user_id=True, domain=domain)
 
         # Build CSR with optional SAN extension
-        csr_builder = x509.CertificateSigningRequestBuilder().subject_name(subject)
+        csr_builder = x509.CertificateSigningRequestBuilder()
+        if domain:
+            subject = self._build_name(subject_fields, include_user_id=True, domain=domain)
+            csr_builder.subject_name(subject)
+
         if alt_names:
             csr_builder = csr_builder.add_extension(
                 x509.SubjectAlternativeName([x509.DNSName(name) for name in alt_names]),

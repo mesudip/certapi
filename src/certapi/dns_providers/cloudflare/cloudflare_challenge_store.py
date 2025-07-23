@@ -1,13 +1,13 @@
 import os
 from collections.abc import MutableMapping
 from certapi.challenge import ChallengeStore
-from certapi.cloudflare_client import Cloudflare
+from certapi.dns_providers.cloudflare.cloudflare_client import Cloudflare
 
 
 class CloudflareChallengeStore(ChallengeStore):
-    def __init__(self):
-        self.cloudflare = Cloudflare()
-        self.challenges_map = {}  # Stores key: record_id (needed for deletion)
+    def __init__(self,api_key:str=None):
+        self.cloudflare = Cloudflare(api_key)
+        self.challenges_map = {} 
 
     def has_domain(self, domain: str) -> bool:
         """

@@ -3,9 +3,9 @@ from datetime import datetime, timezone
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519
-from certapi.crypto_classes import Key
-from certapi.custom_certauthority import CertificateIssuer  # Replace with actual import
-from certapi.crypto import gen_key_ed25519, gen_key_rsa, gen_key_secp256r1
+from certapi.crypto.crypto_classes import Key
+from certapi.issuers.SelfCertIssuer import CertificateIssuer  # Replace with actual import
+from certapi.crypto.crypto import gen_key_ed25519, gen_key_rsa, gen_key_secp256r1
 
 
 @pytest.mark.parametrize("ca_key_type", ["rsa", "ecdsa", "ed25519"])

@@ -2,7 +2,6 @@
 line-length = 120
 
 [tool.pytest.ini_options]
-
 minversion = "6.0"
 addopts = "-ra -q"
 testpaths = [
@@ -10,6 +9,7 @@ testpaths = [
 ]
 env_files =[".env", ".test.env"]
 pythonpath = "src"
+timeout = 10
 
 [build-system]
 requires = ["setuptools>=42"]

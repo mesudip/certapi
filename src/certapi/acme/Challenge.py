@@ -1,0 +1,76 @@
+
+import json
+from typing import Union
+
+import requests
+
+from certapi.util import b64_encode
+from certapi.crypto import digest_sha256
+from .AcmeError import *
+from .http import post,get
+
+class Challenge:
+    def __init__(self, auth_url, data, acme):
+        self._auth_url = auth_url
+        self._acme = acme
+        self._data = data
+        challenge = self.get_challenge()
+        self.token:str = challenge["token"]
+        self.verified = challenge["status"] == "valid"
+        self.domain = data["identifier"]["value"]  # Add domain attribute
+
+        jwk_json = json.dumps(self._acme.jwk, sort_keys=True, separators=(",", ":"))
+        thumbprint = b64_encode(digest_sha256(jwk_json.encode("utf8")))
+        self.authorization_key = "{0}.{1}".format(self.token, thumbprint.decode("utf-8"))
+
+        self.url = "http://{0}/.well-known/acme-challenge/{1}".format(data["identifier"]["value"], self.token)
+
+    def verify(self, dns=False) -> bool:
+        if not self.verified:
+            response = self._acme._signed_req(
+                self.get_challenge(key="dns-01" if dns else "http-01")["url"], {}, step="Verify Challenge", throw=False
+            )
+            if response.status_code == 200 and response.json()["status"] == "valid":
+                self.verified = True
+                return True
+            return False
+        return True
+
+    def self_verify(self) -> Union[bool, requests.Response]:
+        identifier = self._data["identifier"]
+        if identifier["type"] == "dns":
+            res = get("Self Domain verification", self.url)
+            if res.status_code == 200 and res.content == self.token.encode():
+                return True
+            else:
+                return res
+        return False
+
+    def query_progress(self) -> bool:
+        if self.verified:
+            return True
+        else:
+            res = self._acme._signed_req(self._auth_url, step="Acme Challenge Verification")
+            res_json = res.json()
+            if res_json["status"] == "valid":
+                self.verified = True
+                return True
+            elif res_json["status"] == "invalid":
+                raise AcmeInvaliOrderError(res, "Acme Challenge Verification")
+            else:
+                return False
+
+    def get_challenge(self, key="http-01"):
+        challenges = self._data["challenges"]
+        for method in challenges:
+            if method["type"] == key:
+                return method
+        if len(challenges) == 1:
+            return challenges[0]
+
+        ch_types = [x["type"] for x in self._data["challenges"]]
+        raise AcmeError(
+            f"'{key}' not found in challenges. available:{str(ch_types)}",
+            {"response": self._data["challenges"]},
+            "Acme Challenge Verification",
+        )

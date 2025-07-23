@@ -9,9 +9,9 @@ class DigitalOcean(object):
         self.token = api_key
         self.api = "https://api.digitalocean.com/v2/domains"
         if not self.token:
-            self.token = getenv("DIGITALOCEAN_API_TOKEN")
+            self.token = getenv("DIGITALOCEAN_API_KEY")
             if not self.token:
-                raise Exception("API_TOKEN not found in environment")
+                raise Exception("DIGITALOCEAN_API_KEY not found in environment")
 
     def determine_domain(self, domain):
         """Determine registered domain in API"""

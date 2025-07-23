@@ -7,12 +7,13 @@ from urllib.request import urlopen, Request
 class Cloudflare(object):
     name = "cloudflare"
 
-    def __init__(self):
-        self.token = getenv("CLOUDFLARE_API_TOKEN")
-        self.account_id = getenv("CLOUDFLARE_ACCOUNT_ID")
+    def __init__(self,api_key:str):
+        self.token = api_key
         self.api = "https://api.cloudflare.com/client/v4"
         if not self.token:
-            raise Exception("CLOUDFLARE_API_TOKEN not found in environment")
+            self.token = getenv("CLOUDFLARE_API_KEY")
+            if not self.token:
+                raise Exception("CLOUDFLARE_API_KEY not found in environment")
 
         self._zones_cache = None
         self._zones_cache_time = 0  # Unix timestamp of last cache update

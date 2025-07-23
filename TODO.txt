@@ -6,3 +6,41 @@ Link: <https://acme-v02.api.letsencrypt.org/acme/cert/XYZ>;rel="alternate"
 ## Create class for FullChain certs
 It's simply array of certificates, but it changes serialization/deserilization logic 
 - [x] This has been done needs validation. 
+
+
+## Did not request certificate
+Valid configuration   	Id:4329b56b0bba	    nginx-external_configs-1
+-   wss://photos.bhattarai.me:80/
+      ->  http://172.31.7.3:2283
+[CertificateOrSelfSign] Checking domains: photos.bhattarai.me
+Request [400] : POST https://acme-v02.api.letsencrypt.org/acme/new-order step=Acme request:newOrder
+Server nginx
+Date Thu, 03 Jul 2025 04:56:29 GMT
+Content-Type application/problem+json
+Content-Length 203
+Connection keep-alive
+Boulder-Requester 2501318181
+Cache-Control public, max-age=0, no-cache
+Link <https://acme-v02.api.letsencrypt.org/directory>;rel="index"
+Replay-Nonce Qgju4q6iolL2XSMDGnSxVa2ZIyKZAklsFjuS7bYLIalpmafoeZY
+Response: {
+  "type": "urn:ietf:params:acme:error:badNonce",
+  "detail": "Unable to validate JWS :: JWS has an invalid anti-replay nonce: \"Qgju4q6ihf7VlW_phfxyRvf6ArZVd_2xGEWZb44-n1_d6d9VpRw\"",
+  "status": 400
+}
+Request [204] : GET https://acme-v02.api.letsencrypt.org/acme/new-nonce step=Acme request:newOrder > Fetch new Nonce
+Request [400] : POST https://acme-v02.api.letsencrypt.org/acme/new-order step=Acme request:newOrder
+Server nginx
+Date Thu, 03 Jul 2025 04:56:33 GMT
+Content-Type application/problem+json
+Content-Length 133
+Connection keep-alive
+Boulder-Requester 2501318181
+Cache-Control public, max-age=0, no-cache
+Link <https://acme-v02.api.letsencrypt.org/directory>;rel="index"
+Replay-Nonce hFKQ31G5VJC8d8iQqoUvyB4jBXjFCL066sLcT6yxDjVQkeo_XD8
+Response: {
+  "type": "urn:ietf:params:acme:error:malformed",
+  "detail": "NewOrder request did not specify any identifiers",
+  "status": 400
+}

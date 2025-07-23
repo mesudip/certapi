@@ -1,6 +1,10 @@
 from typing import List, Union, Callable, Tuple, Dict
+
+from .abstract_certissuer import CertIssuer
 import json
 import time
+
+from ..http.types import CertificateResponse, IssuedCert
 
 import requests
 from cryptography.x509 import Certificate
@@ -14,16 +18,15 @@ import requests
 from cryptography.x509 import Certificate
 from requests import Response
 
-from . import Acme, Challenge, Order
-from . import crypto
-from . import challenge
-from .crypto import cert_to_pem, certs_to_pem, key_to_pem, digest_sha256
-from .crypto_classes import Key
-from .db import KeyStore
-from .util import b64_string
+from .. import Acme, Challenge, Order
+from .. import challenge
+from ..crypto.crypto import cert_to_pem, certs_to_pem, key_to_pem, digest_sha256
+from ..crypto.crypto_classes import Key
+from ..keystore.KeyStore import KeyStore
+from ..util import b64_string
 
 
-class CertAuthority:
+class CertAuthority(CertIssuer):
     def __init__(
         self,
         challenge_store: challenge.ChallengeStore,
@@ -45,8 +48,11 @@ class CertAuthority:
             print("Acme Account was already registered")
         elif res.status_code != 200:
             raise Exception("Acme registration didn't return 200 or 201 ", res.json())
+    def sign_csr(self, csr, expiry_days = 90):
 
-    def obtainCert(self, host: Union[str, List[str]]) -> "CertificateResponse":
+        return super().sign_csr(csr, expiry_days)
+
+    def issue_certificate(self, hosts: Union[str, List[str]]):
         if type(host) == str:
             host = [host]
 
@@ -124,7 +130,7 @@ class CertAuthority:
                     fullchain_cert, certificate = order.get_certificate()
                     key_id = self.key_store.save_key(private_key, missing[0])
                     cert_id = self.key_store.save_cert(key_id, fullchain_cert, missing)
-                    issued_cert = IssuedCert(key_to_pem(private_key), fullchain_cert, missing)
+                    issued_cert: IssuedCert = IssuedCert(key=private_key, cert=fullchain_cert, domains=missing)
                     # Clean up challenges after successful certificate issuance
                     for c in challenges:
                         challenge_name = f"_acme-challenge.{c.domain}" if has_wildcard else c.token
@@ -146,7 +152,7 @@ class CertAuthority:
 
 
 def createExistingResponse(
-    existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]], issued_certs: List["IssuedCert"]
+    existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]], issued_certs: List[IssuedCert]
 ):
     certs = []
     certMap = {}
@@ -164,61 +170,11 @@ def createExistingResponse(
 
             certMap[id] = (
                 [h],
-                key.to_pem().decode("utf-8"),
+                key,
                 cert_pem,
             )
 
     for hosts, key, cert in certMap.values():
-        certs.append(IssuedCert(key, cert, hosts))
+        certs.append(IssuedCert(key=key, cert=cert, domains=hosts))
 
-    return CertificateResponse(certs, issued_certs)
-
-
-class CertificateResponse:
-    def __init__(self, existing, issued):
-        self.existing: List[IssuedCert] = existing
-        self.issued: List[IssuedCert] = issued
-
-    def __repr__(self):
-        return "CertificateResponse(existing={0},new={1})".format(repr(self.existing), repr(self.issued))
-
-    def __str__(self):
-        if self.issued:
-            return "(existing: {0},new: {1})".format(str(self.existing), str(self.issued))
-        else:
-            return "(existing: {0})".format(str(self.existing))
-
-    def __json__(self):
-        return {
-            "existing": [x.__json__() for x in self.existing],
-            "issued": [x.__json__() for x in self.issued],
-        }
-
-
-class IssuedCert:
-    def __init__(self, key: str | Key, cert: str | Certificate | List[Certificate], domains: [str]):
-        if isinstance(key, Key):
-            key = key.to_pem().decode("utf-8")
-        elif isinstance(key, bytes):
-            key = key.decode("utf-8")
-
-        if isinstance(cert, list):
-            cert = certs_to_pem(cert).decode("utf-8")
-        elif isinstance(cert, Certificate):
-            cert = cert_to_pem(cert).decode("utf-8")
-        elif isinstance(cert, bytes):
-            cert = cert.decode("utf-8")
-
-        self.privateKey = key
-        self.certificate = cert
-        self.domains = domains
-
-    def __repr__(self):
-        # return "IssuedCert(hosts={0})".format(self.domains)
-        return "(hosts: {0}, certificate:{1})".format(self.domains, self.certificate)
-
-    def __str__(self):
-        return "(hosts: {0}, certificate:{1})".format(self.domains, self.certificate)
-
-    def __json__(self):
-        return {"privateKey": self.privateKey, "certificate": self.certificate, "domains": self.domains}
+    return CertificateResponse(existing=certs, issued=issued_certs)

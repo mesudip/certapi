@@ -1,12 +1,12 @@
 import os
 from collections.abc import MutableMapping
 from certapi.challenge import ChallengeStore
-from certapi.digitalocean_client import DigitalOcean
+from certapi.dns_providers.digitalocean.digitalocean_client import DigitalOcean
 
 
 class DigitalOceanChallengeStore(ChallengeStore):
-    def __init__(self):
-        self.digitalocean = DigitalOcean()
+    def __init__(self,api_key:str=None):
+        self.digitalocean = DigitalOcean(api_key)
         self.challenges_map = {}  # Stores key: record_id (needed for deletion)
 
     def has_domain(self, domain: str) -> bool:

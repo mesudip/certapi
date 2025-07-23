@@ -6,7 +6,6 @@ class ChallengeStore:
     """
     Abstract base class for a challenge store.
     """
-
     def save_challenge(self, key: str, value: str, domain: str = None):
         raise NotImplementedError("Must implement `save_challenge` method.")
 

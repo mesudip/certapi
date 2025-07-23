@@ -12,9 +12,8 @@ from cryptography.x509 import Certificate, CertificateSigningRequestBuilder, Cer
 
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
-import datetime
 
-from .util import b64_encode, b64_string
+from certapi.util import  b64_string
 
 __no_enc = serialization.NoEncryption()
 
@@ -142,7 +141,6 @@ def csr_to_der(csr) -> bytes:
 
 
 def sign(key: Union[RSAPrivateKey, Ed25519PrivateKey, EllipticCurvePrivateKey], message, hasher=hashes.SHA256()):
-    #    return key.sign(message,padding.PSS(mgf=padding.(hashes.SHA256()),salt_length=padding.PSS.MAX_LENGTH),hashes.SHA256())
     if isinstance(key, RSAPrivateKey):
         return key.sign(message, padding.PKCS1v15(), hasher)
     elif isinstance(key, Ed25519PrivateKey):
@@ -171,80 +169,6 @@ def key_to_der(key: RSAPrivateKey | Ed25519PrivateKey | EllipticCurvePrivateKey)
     return key.private_bytes(
         encoding=serialization.Encoding.DER, format=serialization.PrivateFormat.PKCS8, encryption_algorithm=__no_enc
     )
-
-
-def create_csr(
-    private_key: Union[RSAPrivateKey, Ed25519PrivateKey, EllipticCurvePrivateKey],
-    main_domain: str,
-    alternatives: List[str] = None,
-) -> CertificateSigningRequest:
-    subject = x509.Name(
-        [
-            # Provide various details about who we are.
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "NP"),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Bagmati"),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, "Kathmandu"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Sireto Technology"),
-            x509.NameAttribute(NameOID.COMMON_NAME, main_domain),
-        ]
-    )
-    builder = x509.CertificateSigningRequestBuilder().subject_name(subject)
-    if alternatives is not None:
-        builder = builder.add_extension(
-            x509.SubjectAlternativeName([x509.DNSName(alt) for alt in alternatives]), critical=True
-        )
-    return builder.sign(private_key, hashes.SHA256())
-
-
-def self_sign():
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    csr = create_csr(key, "host4.sireto.dev", []).sign(key, hashes.SHA256())
-    with open("test.csr", "wb") as f:
-        f.write(csr_to_pem(csr))
-
-    # Various details about who we are. For a self-signed certificate the
-    # subject and issuer are always the same.
-    subject = issuer = x509.Name(
-        [
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "California"),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, "San Francisco"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "My Company"),
-            x509.NameAttribute(NameOID.COMMON_NAME, "domain3.sireto.dev"),
-        ]
-    )
-    now = datetime.datetime.utcnow()
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + datetime.timedelta(days=10))
-        .add_extension(
-            x509.SubjectAlternativeName([x509.DNSName("localhost")]),
-            critical=False,
-            # Sign our certificate with our private key
-        )
-        .sign(key, hashes.SHA256())
-    )
-    # Write our certificate out to disk.
-
-    with open("certificate.pem", "wb") as f:
-        f.write(cert.public_bytes(serialization.Encoding.PEM))
-
-    # getting public key from certificate.
-    public_key = cert.public_key()
-    if isinstance(public_key, rsa.RSAPublicKey):
-        # Do something RSA specific
-        pass
-    elif isinstance(public_key, ec.EllipticCurvePublicKey):
-        # Do something EC specific
-        pass
-    else:
-        # Remember to handle this case
-        pass
 
 
 def digest_sha256(data: bytes) -> bytes:
