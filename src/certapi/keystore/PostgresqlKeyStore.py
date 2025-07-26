@@ -1,7 +1,9 @@
 
 from contextlib import contextmanager
+from typing import Tuple, Optional, Union, List
 
-from certapi.keystore.KeyStore import KeyStore
+from certapi.crypto import Key, Certificate, certs_from_pem, cert_to_pem, certs_to_pem
+from .KeyStore import KeyStore
 
 
 class PostgresKeyStore(KeyStore):
@@ -10,11 +12,9 @@ class PostgresKeyStore(KeyStore):
         import psycopg2
 
         self.psycopg2 = psycopg2
-
-    def setup(self):
         self._initialize_pool()
         self._initialize_db()
-        self.account_key = self._init_account_key()
+        self.account_key, _ = self._get_or_generate_key("ACME Account Key")
 
     def _initialize_pool(self):
         """Initialize the connection pool."""
@@ -76,35 +76,38 @@ class PostgresKeyStore(KeyStore):
                 );
             """
             )
-            # No need to explicitly commit here
-
-    def save_key(self, key: RSAPrivateKey, name: str = None) -> int:
+    def save_key(self, key: Key, id: str | int | None) -> int | str:
         """Saves a private key in the database."""
         with self.get_connection() as conn:
-            # Execute the insert directly
-            conn.execute(
-                "INSERT INTO private_keys (name, content) VALUES (%s, %s) RETURNING id", (name, key_to_der(key))
-            )
+            if isinstance(id, int):
+                conn.execute(
+                    "INSERT INTO private_keys (id, content) VALUES (%s, %s) RETURNING id", (id, key.to_der())
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO private_keys (name, content) VALUES (%s, %s) RETURNING id", (id, key.to_der())
+                )
             key_id = conn.fetchone()[0]  # Fetch the inserted ID
-        return key_id
+        return key_id if isinstance(id, int) else id
 
-    def gen_key(self, name: str = None, size: int = 4096) -> RSAPrivateKey:
-        """Generates a new RSA private key and saves it."""
-        key = gen_key_rsa(size)
-        self.save_key(key, name)
-        return key
+    def find_key(self, id: str | int) -> Optional[Key]:
+        """Finds a private key in the database."""
+        with self.get_connection() as conn:
+            if isinstance(id, int):
+                conn.execute("SELECT content FROM private_keys WHERE id = %s", (id,))
+            else:
+                conn.execute("SELECT content FROM private_keys WHERE name = %s", (id,))
+            res = conn.fetchone()
+            if res:
+                return Key.from_der(res[0])
+        return None
 
     def save_cert(
         self, private_key_id: int, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
     ) -> int:
         """Saves a certificate along with associated domains."""
         with self.get_connection() as conn:
-            if isinstance(cert, list):
-                cert_data = certs_to_pem(cert)
-            elif isinstance(cert, str):
-                cert_data = cert.encode()
-            else:
-                cert_data = cert_to_pem(cert)
+            cert_data = self._get_cert_as_pem_bytes(cert)
 
             # Insert certificate and associated domains directly
             conn.execute(
@@ -119,7 +122,7 @@ class PostgresKeyStore(KeyStore):
 
         return cert_id
 
-    def get_cert(self, domain: str) -> Optional[Tuple[int, RSAPrivateKey, List[Certificate]]]:
+    def find_cert_by_domain(self, domain: str) -> None | Tuple[int | str, Key, List[Certificate]]:
         """Fetches a certificate and its associated private key for a domain."""
         with self.get_connection() as conn:
             # Directly execute and fetch result
@@ -136,20 +139,23 @@ class PostgresKeyStore(KeyStore):
             res = conn.fetchone()
 
             if res:
-                return (res[0], Key.from_der(res[1]), certs_from_pem(res[2]))
+                return (res[0], Key.from_der(res[1]), self._get_cert_as_cert_list(res[2]))
         return None
 
-    def _init_account_key(self) -> RSAPrivateKey:
-        """Initializes or retrieves the ACME account key."""
-        acme_key_name = "ACME Account Key"
+    def get_cert_by_id(self, id: str) -> None | Tuple[int | str, Key, List[Certificate]]:
+        """Fetches a certificate and its associated private key by ID."""
         with self.get_connection() as conn:
-            # Directly execute to fetch the account key
-            conn.execute("SELECT content FROM private_keys WHERE name = %s", (acme_key_name,))
-            account_key_data = conn.fetchone()
+            conn.execute(
+                """
+                SELECT c.id, p.content, c.content
+                FROM certificates c
+                JOIN private_keys p ON c.priv_id = p.id
+                WHERE c.id = %s
+            """,
+                (id,),
+            )
+            res = conn.fetchone()
 
-            if not account_key_data:
-                account_key = self.gen_key(acme_key_name)
-            else:
-                account_key = key_from_der(account_key_data[0])
-
-        return account_key
+            if res:
+                return (res[0], Key.from_der(res[1]), self._get_cert_as_cert_list(res[2]))
+        return None

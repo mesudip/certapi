@@ -1,11 +1,8 @@
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519
-from certapi.crypto.crypto_classes import Key
-from certapi.issuers.SelfCertIssuer import CertificateIssuer  # Replace with actual import
-from certapi.crypto.crypto import gen_key_ed25519, gen_key_rsa, gen_key_secp256r1
+from certapi import Key, SelfCertIssuer, Certificate, CertificateSigningRequest, CertificateSigningRequestBuilder
 
 
 @pytest.mark.parametrize("ca_key_type", ["rsa", "ecdsa", "ed25519"])
@@ -13,7 +10,7 @@ from certapi.crypto.crypto import gen_key_ed25519, gen_key_rsa, gen_key_secp256r
 def test_ca_and_leaf_cert_all_key_pairs(ca_key_type, csr_key_type):
     # Generate CA key and CA instance
     ca_key = Key.generate(ca_key_type)
-    ca = CertificateIssuer(
+    ca : SelfCertIssuer = SelfCertIssuer(
         ca_key,
         country="US",
         state="California",
@@ -27,16 +24,12 @@ def test_ca_and_leaf_cert_all_key_pairs(ca_key_type, csr_key_type):
     leaf_key = Key.generate(csr_key_type)
     csr = leaf_key.create_csr("example.com")
 
-    # Build subject and CSR
-    # subject = ca._build_name({"common_name": "example.com"})
-    # csr_builder = x509.CertificateSigningRequestBuilder().subject_name(subject)
-    # csr = csr_builder.sign(leaf_key, hashes.SHA256())
 
     # Sign CSR with CA key
     leaf_cert = ca.sign_csr(csr, expiry_days=30)
 
-    # Assertions copied exactly from your original test
 
+    # Assertions
     assert isinstance(ca_cert, x509.Certificate)
     assert ca_cert.subject == ca_cert.issuer  # Self-signed
     assert isinstance(ca_cert.not_valid_before, datetime)

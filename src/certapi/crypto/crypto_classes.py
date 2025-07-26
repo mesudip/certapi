@@ -18,11 +18,11 @@ class Key(ABC):
         pass
 
     @abstractmethod
-    def sign(self, message):
+    def sign(self, message:bytes):
         pass
 
     @abstractmethod
-    def sign_csr(self, csr):
+    def sign_csr(self, csr:x509.CertificateSigningRequestBuilder|x509.CertificateBuilder):
         pass
 
     @staticmethod
@@ -37,8 +37,8 @@ class Key(ABC):
             raise ValueError("Unsupported key type. Use 'rsa' or 'ecdsa'")
 
     @staticmethod
-    def from_der(der_bytes):
-        key = serialization.load_der_private_key(der_bytes, password=None)
+    def from_der(der_bytes:bytes,password:str=None):
+        key = serialization.load_der_private_key(der_bytes, password)
         if isinstance(key, rsa.RSAPrivateKey):
             return RSAKey(key)
         elif isinstance(key, ec.EllipticCurvePrivateKey):
@@ -49,8 +49,8 @@ class Key(ABC):
             raise ValueError("Unsupported key type")
 
     @staticmethod
-    def from_pem(der_bytes):
-        key = serialization.load_pem_private_key(der_bytes, password=None)
+    def from_pem(pem_str:str,password:str=None):
+        key = serialization.load_pem_private_key(pem_str, password)
         if isinstance(key, rsa.RSAPrivateKey):
             return RSAKey(key)
         elif isinstance(key, ec.EllipticCurvePrivateKey):
@@ -127,7 +127,7 @@ class Key(ABC):
         csr_builder = x509.CertificateSigningRequestBuilder()
         if domain:
             subject = self._build_name(subject_fields, include_user_id=True, domain=domain)
-            csr_builder.subject_name(subject)
+            csr_builder=csr_builder.subject_name(subject)
 
         if alt_names:
             csr_builder = csr_builder.add_extension(
