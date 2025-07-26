@@ -1,7 +1,7 @@
 import os
 from collections.abc import MutableMapping
-from certapi.challenge import ChallengeStore
-from certapi.dns_providers.digitalocean.digitalocean_client import DigitalOcean
+from ...ChallengeStore import ChallengeStore
+from .digitalocean_client import DigitalOcean
 
 
 class DigitalOceanChallengeStore(ChallengeStore):

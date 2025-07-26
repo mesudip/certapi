@@ -1,6 +1,8 @@
 from typing import List, Union, Callable, Tuple, Dict
 
-from .abstract_certissuer import CertIssuer
+from certapi import crypto
+
+from ..issuers.abstract_certissuer import CertIssuer
 import json
 import time
 
@@ -19,7 +21,7 @@ from cryptography.x509 import Certificate
 from requests import Response
 
 from .. import Acme, Challenge, Order
-from .. import challenge
+from ..challenge_store import ChallengeStore
 from ..crypto.crypto import cert_to_pem, certs_to_pem, key_to_pem, digest_sha256
 from ..crypto.crypto_classes import Key
 from ..keystore.KeyStore import KeyStore
@@ -29,15 +31,15 @@ from ..util import b64_string
 class CertAuthority(CertIssuer):
     def __init__(
         self,
-        challenge_store: challenge.ChallengeStore,
+        challenge_store: ChallengeStore,
         key_store: KeyStore,
         acme_url=None,
-        dns_stores: List[challenge.ChallengeStore] = None,
+        dns_stores: List[ChallengeStore] = None,
         self_verify_challenge=False,
     ):
         self.acme = Acme(key_store.account_key, url=acme_url)
         self.key_store = key_store
-        self.challengesStore: challenge.ChallengeStore = challenge_store
+        self.challengesStore: ChallengeStore = challenge_store
         self.dns_stores = dns_stores if dns_stores is not None else []
         self.self_verify_challenge = self_verify_challenge
 

@@ -3,9 +3,10 @@ import sys
 import traceback
 
 from flask import Flask, request, jsonify
-from certapi import challenge, CertAuthority
+from certapi import CertAuthority
 from certapi.acme.Acme import AcmeError, AcmeHttpError, AcmeNetworkError
-from certapi.challenge import challenge_store
+from certapi.challenge_store.ChallengeStore import challenge_store
+from certapi.challenge_store import ChallengeStore
 from certapi.dns_providers.cloudflare.cloudflare_challenge_store import CloudflareChallengeStore
 from certapi.crypto import crypto
 from certapi.keystore.KeyStore import SqliteKeyStore, FilesystemKeyStore

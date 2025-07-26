@@ -10,7 +10,7 @@ from certapi.crypto import Key,Certificate,certs_to_pem,cert_to_pem,certs_from_p
 
 class KeyStore(ABC):
     def _get_or_generate_key(self,id:str|int) -> Key:
-        account_key = self.find_key(id)
+        account_key = self.find_key_by_id(id)
         if account_key is None:
             account_key = Key.generate('ecdsa')
             id= self.save_key(account_key,id)
@@ -29,7 +29,9 @@ class KeyStore(ABC):
         if isinstance(cert, list):
             return cert
         elif isinstance(cert, str):
-            return certs_from_pem(cert)
+            return certs_from_pem(cert.encode()) # Ensure it's bytes for certs_from_pem
+        elif isinstance(cert, (bytes, memoryview)): # Handle bytes and memoryview
+            return certs_from_pem(bytes(cert)) # Convert memoryview to bytes
         elif isinstance (cert,Certificate):
            return [cert]
         else:

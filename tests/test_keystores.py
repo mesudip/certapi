@@ -1,8 +1,11 @@
 import pytest
 import os
+import psycopg2 # Added for PostgreSQL database creation
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT # Added for PostgreSQL database creation
+
 from certapi import Key, Certificate
 from certapi.crypto.crypto import cert_to_pem, certs_to_pem
-from certapi.keystore import SqliteKeyStore, FilesystemKeyStore
+from certapi.keystore import SqliteKeyStore, FilesystemKeyStore, PostgresKeyStore
 from typing import List, Tuple, Union
 from datetime import datetime, timedelta
 from certapi import KeyStore, Certificate, Key
@@ -15,7 +18,7 @@ from datetime import datetime, timedelta
 def ca_key():
     return Key.generate("ecdsa")
 
-@pytest.fixture(params=["sqlite", "filesystem"])
+@pytest.fixture(params=["sqlite", "filesystem", "postgresql"])
 def keystore(request, tmp_path):
     if request.param == "sqlite":
         db_path = tmp_path / "test.db"
@@ -32,6 +35,32 @@ def keystore(request, tmp_path):
         import shutil
         if os.path.exists(base_dir):
             shutil.rmtree(base_dir)
+    elif request.param == "postgresql":
+        db_url = "postgresql://localhost/test_db"
+        try:
+            conn_no_db = psycopg2.connect("postgresql://localhost/postgres")
+            conn_no_db.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+            cur_no_db = conn_no_db.cursor()
+            cur_no_db.execute("SELECT 1 FROM pg_database WHERE datname = 'test_db'")
+            exists = cur_no_db.fetchone()
+            if not exists:
+                cur_no_db.execute("CREATE DATABASE test_db")
+            cur_no_db.close()
+            conn_no_db.close()
+        except psycopg2.OperationalError as e:
+            pytest.skip(f"Could not connect to PostgreSQL to create test_db: {e}")
+
+        store = PostgresKeyStore(db_url=db_url)
+        yield store
+        # Clean up after test: drop tables
+        with store.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DROP TABLE IF EXISTS ssl_wildcards;")
+            cur.execute("DROP TABLE IF EXISTS ssl_domains;")
+            cur.execute("DROP TABLE IF EXISTS certificates;")
+            cur.execute("DROP TABLE IF EXISTS private_keys;")
+            conn.commit()
+            cur.close()
 
 def test_save_and_find_key(keystore:KeyStore):
     key = Key.generate("rsa")

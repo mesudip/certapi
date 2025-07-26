@@ -5,7 +5,7 @@ from typing import List, Union, Callable, Tuple, Dict
 import time
 from requests import Response
 from certapi.acme import Acme,Challenge
-from certapi.challenge import ChallengeStore
+from certapi.challenge_store import ChallengeStore
 from certapi.crypto import cert_to_pem, certs_to_pem, key_to_pem, digest_sha256,Key
 from certapi.util import b64_string
 

@@ -1,7 +1,7 @@
 import os
 from collections.abc import MutableMapping
-from certapi.challenge import ChallengeStore
-from certapi.dns_providers.cloudflare.cloudflare_client import Cloudflare
+from ...ChallengeStore import ChallengeStore
+from .cloudflare_client import Cloudflare
 
 
 class CloudflareChallengeStore(ChallengeStore):

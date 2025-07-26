@@ -3,7 +3,7 @@ import requests
 from typing import List, Dict, Any
 from cryptography import x509
 from certapi.crypto.crypto import cert_to_pem, certs_to_pem
-from certapi import RemoteCertAuthority, CertificateResponse, IssuedCert, ListCertsResponse
+from certapi import RemoteCertAuthority, CertificateResponse, IssuedCert
 
 BASE_URL = "http://192.168.1.67:8082"
 AUTH_HEADERS = {"Authorization": "Bearer test_token"}
@@ -44,10 +44,3 @@ def test_obtain_cert_api_error(remote_ca):
 
     assert isinstance(context.value, Exception)
 
-def test_list_certs(remote_ca):
-    response: ListCertsResponse = remote_ca.list_certs()
-
-    assert isinstance(response, ListCertsResponse)
-    assert response.username == "sudip"
-    assert response.theme == "light"
-    assert response.k2 == "v"

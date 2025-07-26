@@ -129,11 +129,20 @@ class Key(ABC):
             subject = self._build_name(subject_fields, include_user_id=True, domain=domain)
             csr_builder=csr_builder.subject_name(subject)
 
-        if alt_names:
-            csr_builder = csr_builder.add_extension(
-                x509.SubjectAlternativeName([x509.DNSName(name) for name in alt_names]),
-                critical=False,
-            )
+        # Always include the domain in SAN, and then add alt_names
+        all_alt_names = [domain] + list(alt_names)
+        # Remove duplicates while preserving order (CN first, then alt_names order)
+        seen = set()
+        unique_alt_names = []
+        for name in all_alt_names:
+            if name not in seen:
+                seen.add(name)
+                unique_alt_names.append(name)
+
+        csr_builder = csr_builder.add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(name) for name in unique_alt_names]),
+            critical=False,
+        )
 
         # Sign the CSR using the subclass-specific signing method
         return self.sign_csr(csr_builder)
