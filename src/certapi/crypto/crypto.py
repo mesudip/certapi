@@ -10,8 +10,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.x509 import Certificate, CertificateSigningRequestBuilder, CertificateSigningRequest
 
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import NameOID,ExtensionOID
 from cryptography.hazmat.primitives import hashes
+
 
 from certapi.util import  b64_string
 
@@ -175,3 +176,31 @@ def digest_sha256(data: bytes) -> bytes:
     h = hashes.Hash(hashes.SHA256())
     h.update(data)
     return h.finalize()
+
+def get_csr_hostnames(csr: x509.CertificateSigningRequest):
+
+    domains = []
+
+    common_names = [attr.value for attr in csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)]
+    if common_names:
+        cn = common_names[0]
+        # Put CN at the beginning, unless it's already in SAN
+        if cn not in domains:
+            domains.insert(0, cn)
+
+    try:
+        san_extension = csr.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        san = san_extension.value
+        san_domains = san.get_values_for_type(x509.DNSName)
+        domains.extend(san_domains)
+    except x509.ExtensionNotFound:
+        san_domains = []
+
+    seen = set()
+    unique_domains = []
+    for d in domains:
+        if d not in seen:
+            seen.add(d)
+            unique_domains.append(d)
+
+    return unique_domains

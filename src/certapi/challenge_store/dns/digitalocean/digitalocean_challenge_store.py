@@ -9,7 +9,7 @@ class DigitalOceanChallengeStore(ChallengeStore):
         self.digitalocean = DigitalOcean(api_key)
         self.challenges_map = {}  # Stores key: record_id (needed for deletion)
 
-    def has_domain(self, domain: str) -> bool:
+    def supports_domain(self, domain: str) -> bool:
         """
         Checks if the DigitalOcean account has access to the given domain (or its base domain)
         as a registered zone.

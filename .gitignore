@@ -20,3 +20,4 @@ src/certapi.egg-info
 .venv
 .env
 .D
+test_db_temp/

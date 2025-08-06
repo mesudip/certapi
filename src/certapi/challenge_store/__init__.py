@@ -1,7 +1,7 @@
 from .ChallengeStore import ChallengeStore
 from .InmemoryChallengeStore import InMemoryChallengeStore
 import os
-from .FilesystemChallengeStore import FileSystemChallengeStore
+from .FileSystemChallengeStore import FileSystemChallengeStore
 from .dns import CloudflareChallengeStore,DigitalOceanChallengeStore
 
 def get_challenge_store():

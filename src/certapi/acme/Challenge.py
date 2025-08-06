@@ -1,10 +1,10 @@
 
 import json
-from typing import Union
+from typing import Literal, Union
 
 import requests
 
-from certapi.util import b64_encode
+from certapi.util import b64_encode, b64_string
 from certapi.crypto import digest_sha256
 from .AcmeError import *
 from .http import post,get
@@ -25,10 +25,23 @@ class Challenge:
 
         self.url = "http://{0}/.well-known/acme-challenge/{1}".format(data["identifier"]["value"], self.token)
 
-    def verify(self, dns=False) -> bool:
+    def as_key_value(self,type:Literal["http-01", "dns-01", "tls-alpn-01"]=None):
+        challenge=self.get_challenge(type)
+
+        if challenge["type"] == "dns-01":
+            key = f"_acme-challenge.{self.domain}"
+            value = b64_string(digest_sha256(self.authorization_key.encode("utf8")))
+        else:
+            key =  self.token
+            value =  self.authorization_key
+        
+        return (key,value)
+
+
+    def verify(self, type:Literal["http-01", "dns-01", "tls-alpn-01"]=None) -> bool:
         if not self.verified:
             response = self._acme._signed_req(
-                self.get_challenge(key="dns-01" if dns else "http-01")["url"], {}, step="Verify Challenge", throw=False
+                self.get_challenge(type)["url"], {}, step="Verify Challenge", throw=False
             )
             if response.status_code == 200 and response.json()["status"] == "valid":
                 self.verified = True
@@ -60,17 +73,18 @@ class Challenge:
             else:
                 return False
 
-    def get_challenge(self, key="http-01"):
+    def get_challenge(self, type:Literal["http-01", "dns-01", "tls-alpn-01"]=None):
         challenges = self._data["challenges"]
+        def_key= type if type is not None else "http-01"
         for method in challenges:
-            if method["type"] == key:
+            if method["type"] == def_key:
                 return method
-        if len(challenges) == 1:
+        if type is None:
             return challenges[0]
 
         ch_types = [x["type"] for x in self._data["challenges"]]
         raise AcmeError(
-            f"'{key}' not found in challenges. available:{str(ch_types)}",
+            f"'{type}' not found in challenges. available:{str(ch_types)}",
             {"response": self._data["challenges"]},
             "Acme Challenge Verification",
         )

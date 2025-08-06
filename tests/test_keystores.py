@@ -5,7 +5,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT # Added for PostgreSQ
 
 from certapi import Key, Certificate
 from certapi.crypto.crypto import cert_to_pem, certs_to_pem
-from certapi.keystore import SqliteKeyStore, FilesystemKeyStore, PostgresKeyStore
+from certapi.keystore import SqliteKeyStore, FileSystemKeystore, PostgresKeyStore
 from typing import List, Tuple, Union
 from datetime import datetime, timedelta
 from certapi import KeyStore, Certificate, Key
@@ -29,7 +29,7 @@ def keystore(request, tmp_path):
             os.remove(db_path)
     elif request.param == "filesystem":
         base_dir = tmp_path / "keystore_fs"
-        store = FilesystemKeyStore(base_dir=str(base_dir))
+        store = FileSystemKeystore(base_dir=str(base_dir))
         yield store
         # Clean up after test
         import shutil
@@ -85,7 +85,7 @@ def test_save_and_find_cert(keystore:KeyStore, ca_key: Key):
     found_cert_tuple = keystore.find_key_and_cert_by_domain("example.com")
     assert found_cert_tuple is not None
     found_id, found_key, found_certs = found_cert_tuple
-    if not isinstance(keystore, FilesystemKeyStore):
+    if not isinstance(keystore, FileSystemKeystore):
         assert found_id == cert_id
     assert found_key.to_pem() == key.to_pem()
     assert len(found_certs) == 1
@@ -126,7 +126,7 @@ def test_save_cert_with_list_of_certs(keystore, ca_key: Key):
     found_cert_tuple = keystore.find_key_and_cert_by_domain("cert1.example.com")
     assert found_cert_tuple is not None
     found_id, found_key, found_certs = found_cert_tuple
-    if not isinstance(keystore, FilesystemKeyStore):
+    if not isinstance(keystore, FileSystemKeystore):
         assert found_id == cert_id
     assert found_key.to_pem() == key.to_pem()
     assert len(found_certs) == 2

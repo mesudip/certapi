@@ -1,19 +1,31 @@
+from abc import ABC, abstractmethod
 import os
 from collections.abc import MutableMapping
 
 
-class ChallengeStore:
+class ChallengeStore(ABC):
     """
     Abstract base class for a challenge store.
     """
+    @abstractmethod
+    def supports_domain(self, domain: str) -> bool:
+        pass
+
+    @abstractmethod
     def save_challenge(self, key: str, value: str, domain: str = None):
-        raise NotImplementedError("Must implement `save_challenge` method.")
+        pass
 
+    @abstractmethod
     def get_challenge(self, key: str, domain: str = None) -> str:
-        raise NotImplementedError("Must implement `get_challenge` method.")
+        pass
 
+    @abstractmethod
     def delete_challenge(self, key: str, domain: str = None):
-        raise NotImplementedError("Must implement `delete_challenge` method.")
+        pass
+    def store_details():
+        return {
+            "name": "Abstract Challenge Store",
+        }
 
     def __iter__(self):
         raise NotImplementedError("Must implement `__iter__` method.")

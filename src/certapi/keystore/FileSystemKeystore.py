@@ -5,7 +5,7 @@ from certapi.crypto import certs_from_pem
 from .KeyStore import KeyStore
 from certapi.crypto import Key, Certificate
 
-class FilesystemKeyStore(KeyStore):
+class FileSystemKeystore(KeyStore):
     """
     Important nuance of using filesystem keystores is that id and name means same thing.
     """

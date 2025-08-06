@@ -9,7 +9,6 @@ class SelfCertIssuer(CertIssuer):
     def __init__(
         self,
         key: Key,
-        *,
         country: Optional[str] = None,
         state: Optional[str] = None,
         locality: Optional[str] = None,

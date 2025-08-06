@@ -7,7 +7,7 @@
 
         {
             "name": "CertApi App",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "src/app.py",
             "console": "integratedTerminal",
