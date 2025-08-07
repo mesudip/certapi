@@ -5,24 +5,24 @@ from certapi.crypto import certs_from_pem
 from .KeyStore import KeyStore
 from certapi.crypto import Key, Certificate
 
+
 class FileSystemKeystore(KeyStore):
     """
     Important nuance of using filesystem keystores is that id and name means same thing.
     """
+
     def __init__(self, base_dir=".", keys_dir_name="keys", certs_dir_name="certs"):
         self.keys_dir = os.path.join(base_dir, keys_dir_name)
         self.certs_dir = os.path.join(base_dir, certs_dir_name)
         os.makedirs(self.keys_dir, exist_ok=True)
         os.makedirs(self.certs_dir, exist_ok=True)
 
-
-    def save_key(self, key: Key, name: str  | None) -> str:
+    def save_key(self, key: Key, name: str | None) -> str:
         name = str(name)
         key_path = os.path.join(self.keys_dir, f"{name}.key")
         with open(key_path, "wb") as f:
             f.write(key.to_pem())
         return name
-
 
     def find_key_by_id(self, id: str | int) -> Union[None, Key]:
         name = str(id)
@@ -33,13 +33,13 @@ class FileSystemKeystore(KeyStore):
             return Key.from_pem(key_data)
         return None
 
-    def find_key_by_name(self, name:str)-> Optional[Key]:
+    def find_key_by_name(self, name: str) -> Optional[Key]:
         return self.find_key_by_id(name)
 
     def save_cert(
         self, private_key_id: str, cert: Certificate | str | List[Certificate], domains: list, name: str = None
     ) -> int:
-        cert_pem= self._get_cert_as_pem_bytes(cert)
+        cert_pem = self._get_cert_as_pem_bytes(cert)
 
         if name:
             cert_path = os.path.join(self.certs_dir, f"{name}.crt")
@@ -70,7 +70,7 @@ class FileSystemKeystore(KeyStore):
         return self._get_key_and_cert_by_name(domain)
 
     def find_key_and_cert_by_cert_id(self, id: str) -> None | Tuple[Key, List[Certificate]]:
-        
+
         key_path = os.path.join(self.keys_dir, f"{id}.key")
         cert_path = os.path.join(self.certs_dir, f"{id}.crt")
         key = None
@@ -96,4 +96,4 @@ class FileSystemKeystore(KeyStore):
     def _get_key_and_cert_by_name(self, name: str) -> None | Tuple[str, Key, List[Certificate]]:
         result = self.find_key_and_cert_by_cert_id(name)
         if result is not None:
-            return (name,result[0],result[1])
+            return (name, result[0], result[1])

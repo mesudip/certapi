@@ -7,6 +7,7 @@ class ChallengeStore(ABC):
     """
     Abstract base class for a challenge store.
     """
+
     @abstractmethod
     def supports_domain(self, domain: str) -> bool:
         pass
@@ -22,6 +23,7 @@ class ChallengeStore(ABC):
     @abstractmethod
     def delete_challenge(self, key: str, domain: str = None):
         pass
+
     def store_details():
         return {
             "name": "Abstract Challenge Store",

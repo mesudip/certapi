@@ -10,11 +10,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.x509 import Certificate, CertificateSigningRequestBuilder, CertificateSigningRequest
 
-from cryptography.x509.oid import NameOID,ExtensionOID
+from cryptography.x509.oid import NameOID, ExtensionOID
 from cryptography.hazmat.primitives import hashes
 
 
-from certapi.util import  b64_string
+from certapi.util import b64_string
 
 __no_enc = serialization.NoEncryption()
 
@@ -176,6 +176,7 @@ def digest_sha256(data: bytes) -> bytes:
     h = hashes.Hash(hashes.SHA256())
     h.update(data)
     return h.finalize()
+
 
 def get_csr_hostnames(csr: x509.CertificateSigningRequest):
 

@@ -1,6 +1,6 @@
-
 import requests
 from .AcmeError import *
+
 
 def request(method, step: str, url: str, json=None, headers=None, throw=True) -> requests.Response:
     res = None
@@ -53,4 +53,3 @@ def post(step: str, url: str, json=None, headers=None, throw=True) -> requests.R
 
 def get(step: str, url) -> requests.Response:
     return request("GET", step, url)
-

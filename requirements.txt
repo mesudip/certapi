@@ -1,5 +1,6 @@
 cryptography
 requests
 # test requirements.
+pytest
 pytest-dotenv
 psycopg2

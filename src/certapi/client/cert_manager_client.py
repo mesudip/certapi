@@ -2,6 +2,7 @@ import requests
 from typing import List, Union, Dict, Optional, Any
 from certapi.http.types import CertificateResponse, IssuedCert
 
+
 class CertManagerClient:
     def __init__(self, base_url: str):
         self.base_url = base_url
@@ -11,8 +12,15 @@ class CertManagerClient:
         response.raise_for_status()
         return response.json()
 
-    def _post(self, path: str, data: Optional[Union[Dict[str, Any], str]] = None, headers: Optional[Dict[str, str]] = None) -> Any:
-        response = requests.post(f"{self.base_url}{path}", json=data if isinstance(data, dict) else None, data=data if isinstance(data, str) else None, headers=headers)
+    def _post(
+        self, path: str, data: Optional[Union[Dict[str, Any], str]] = None, headers: Optional[Dict[str, str]] = None
+    ) -> Any:
+        response = requests.post(
+            f"{self.base_url}{path}",
+            json=data if isinstance(data, dict) else None,
+            data=data if isinstance(data, str) else None,
+            headers=headers,
+        )
         response.raise_for_status()
         return response.json()
 
@@ -32,17 +40,24 @@ class CertManagerClient:
             "key_type": key_type,
             "expiry_days": expiry_days,
         }
-        if country: params["country"] = country
-        if state: params["state"] = state
-        if locality: params["locality"] = locality
-        if organization: params["organization"] = organization
-        if user_id: params["user_id"] = user_id
+        if country:
+            params["country"] = country
+        if state:
+            params["state"] = state
+        if locality:
+            params["locality"] = locality
+        if organization:
+            params["organization"] = organization
+        if user_id:
+            params["user_id"] = user_id
 
         data = self._get("/obtain", params=params)
         return CertificateResponse.from_json(data)
 
     def sign_csr(self, csr_pem: str) -> str:
-        response = requests.post(f"{self.base_url}/sign_csr", data=csr_pem, headers={'Content-Type': 'application/x-pem-file'})
+        response = requests.post(
+            f"{self.base_url}/sign_csr", data=csr_pem, headers={"Content-Type": "application/x-pem-file"}
+        )
         response.raise_for_status()
         return response.text
 
@@ -88,11 +103,14 @@ class CertManagerClient:
                 return None
             raise
 
-    def save_cert(self, private_key_id: Union[int, str], cert_pem: str, domains: List[str], name: Optional[str] = None) -> Dict[str, Any]:
+    def save_cert(
+        self, private_key_id: Union[int, str], cert_pem: str, domains: List[str], name: Optional[str] = None
+    ) -> Dict[str, Any]:
         data = {
             "private_key_id": private_key_id,
             "cert": cert_pem,
             "domains": domains,
         }
-        if name: data["name"] = name
+        if name:
+            data["name"] = name
         return self._post("/certs", data=data)

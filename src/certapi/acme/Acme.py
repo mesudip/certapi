@@ -9,12 +9,13 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.x509 import CertificateSigningRequest, Certificate
 from certapi.crypto import crypto
 import requests
-from certapi.crypto import sign, digest_sha256, csr_to_der, jwk, get_algorithm_name, sign_for_jws,Key
+from certapi.crypto import sign, digest_sha256, csr_to_der, jwk, get_algorithm_name, sign_for_jws, Key
 from certapi.util import b64_encode, b64_string
 from .AcmeError import *
 from .http import *
 from .Challenge import Challenge
 from .Order import Order
+
 
 class Acme:
 
@@ -23,7 +24,7 @@ class Acme:
 
     def __init__(self, account_key: Union[RSAPrivateKey, EllipticCurvePrivateKey | Key], url=URL_STAGING):
         self.account_key = account_key.key if isinstance(account_key, Key) else account_key
-        
+
         # json web key format for public key
         self.jwk = jwk(self.account_key)
         print(self.jwk)

@@ -1,6 +1,6 @@
-
 from .ChallengeStore import ChallengeStore
 import os
+
 
 class FileSystemChallengeStore(ChallengeStore):
     """

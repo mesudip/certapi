@@ -2,7 +2,8 @@ from .ChallengeStore import ChallengeStore
 from .InmemoryChallengeStore import InMemoryChallengeStore
 import os
 from .FileSystemChallengeStore import FileSystemChallengeStore
-from .dns import CloudflareChallengeStore,DigitalOceanChallengeStore
+from .dns import CloudflareChallengeStore, DigitalOceanChallengeStore
+
 
 def get_challenge_store():
     """
@@ -21,5 +22,3 @@ def get_challenge_store():
         return FileSystemChallengeStore(directory)
     else:
         raise ValueError(f"Unknown CHALLENGE_STORE_TYPE: {store_type}")
-
-

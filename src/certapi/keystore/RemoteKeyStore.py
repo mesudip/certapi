@@ -27,7 +27,11 @@ class RemoteKeyStore(KeyStore):
         return None
 
     def save_cert(
-        self, private_key_id: int | str, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
+        self,
+        private_key_id: int | str,
+        cert: Certificate | str | List[Certificate],
+        domains: List[str],
+        name: str = None,
     ) -> int:
         cert_pem = self._get_cert_as_pem_bytes(cert).decode("utf-8")
         response = self.client.save_cert(private_key_id, cert_pem, domains, name)
@@ -37,7 +41,7 @@ class RemoteKeyStore(KeyStore):
         cert_data = self.client.get_cert_by_domain(domain)
         if cert_data and "pem" in cert_data and "key_id" in cert_data:
             cert_list = certs_from_pem(cert_data["pem"].encode("utf-8"))
-            key_obj = self.find_key_by_id(cert_data["key_id"]) # Assuming key_id is sufficient to retrieve the key
+            key_obj = self.find_key_by_id(cert_data["key_id"])  # Assuming key_id is sufficient to retrieve the key
             if key_obj:
                 return cert_data["key_id"], key_obj, cert_list
         return None
@@ -46,7 +50,7 @@ class RemoteKeyStore(KeyStore):
         cert_data = self.client.get_cert_by_id(id)
         if cert_data and "pem" in cert_data and "key_id" in cert_data:
             cert_list = certs_from_pem(cert_data["pem"].encode("utf-8"))
-            key_obj = self.find_key_by_id(cert_data["key_id"]) # Assuming key_id is sufficient to retrieve the key
+            key_obj = self.find_key_by_id(cert_data["key_id"])  # Assuming key_id is sufficient to retrieve the key
             if key_obj:
                 return key_obj, cert_list
         return None

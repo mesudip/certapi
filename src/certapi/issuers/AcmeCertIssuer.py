@@ -1,11 +1,11 @@
-from certapi.crypto import ECDSAKey, Ed25519Key, RSAKey,Key
+from certapi.crypto import ECDSAKey, Ed25519Key, RSAKey, Key
 from .abstract_certissuer import CertIssuer
 from cryptography import x509
 from cryptography.x509 import Certificate
 from typing import List, Literal, Union, Callable, Tuple, Dict, Optional
 import time
 from requests import Response
-from certapi.acme import Acme,Challenge, Order
+from certapi.acme import Acme, Challenge, Order
 from certapi.challenge_store import ChallengeStore
 
 
@@ -15,7 +15,7 @@ class AcmeCertIssuer(CertIssuer):
         account_key: Key,
         challenge_store: ChallengeStore,
         acme_url=None,
-        self_verify_challenge=False, # This never needs to be set to True
+        self_verify_challenge=False,  # This never needs to be set to True
     ):
         self.acme = Acme(account_key, url=acme_url)
         self.challenge_store = challenge_store
@@ -29,7 +29,9 @@ class AcmeCertIssuer(CertIssuer):
         elif res.status_code != 200:
             raise Exception("Acme registration didn't return 200 or 201 ", res.json())
 
-    def sign_csr(self, csr: x509.CertificateSigningRequest,challenge_store:ChallengeStore=None,expiry_days: int = 90) -> str:
+    def sign_csr(
+        self, csr: x509.CertificateSigningRequest, challenge_store: ChallengeStore = None, expiry_days: int = 90
+    ) -> str:
         challenge_store = challenge_store if challenge_store is not None else self.challenge_store
         hosts = self.get_csr_hostnames(csr)
         order: Order = self.acme.create_authorized_order(hosts)
@@ -41,7 +43,7 @@ class AcmeCertIssuer(CertIssuer):
         for c in challenges:
             if self.self_verify_challenge:
                 c.self_verify()
-        end = time.time() + max(len(challenges) * 10,300)
+        end = time.time() + max(len(challenges) * 10, 300)
         remaining_now: List[Challenge] = [x for x in challenges]
         next_remaining = []
         counter = 1
@@ -75,40 +77,49 @@ class AcmeCertIssuer(CertIssuer):
                     return None
                 return obtain_cert()
             return None
+
         return obtain_cert()
 
-    def generate_key_and_cert_for_domains(self, hosts: Union[str, List[str]],
-                                   key_type: Literal["rsa","ecdsa","ed25519"] = "rsa",
+    def generate_key_and_cert_for_domains(
+        self,
+        hosts: Union[str, List[str]],
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
-        challenge_store: Optional[ChallengeStore] = None):
-        if len(hosts) ==0:
+        challenge_store: Optional[ChallengeStore] = None,
+    ):
+        if len(hosts) == 0:
             raise ValueError("CertIssuer.generate_key_and_cert_for_domains: empty hosts array provided")
-        return self.generate_key_and_cert(hosts[0],hosts[0:],key_type,expiry_days,country,state,locality,organization,user_id,challenge_store)
+        return self.generate_key_and_cert(
+            hosts[0], hosts[0:], key_type, expiry_days, country, state, locality, organization, user_id, challenge_store
+        )
 
-    
-    def generate_key_and_cert_for_domain(self, host:str,
-                                  key_type: Literal["rsa","ecdsa","ed25519"] = "rsa",
+    def generate_key_and_cert_for_domain(
+        self,
+        host: str,
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
-        challenge_store: Optional[ChallengeStore] = None):
+        challenge_store: Optional[ChallengeStore] = None,
+    ):
 
-        return self.generate_key_and_cert(host,[],key_type,expiry_days,country,state,locality,organization,user_id,challenge_store)
-    
+        return self.generate_key_and_cert(
+            host, [], key_type, expiry_days, country, state, locality, organization, user_id, challenge_store
+        )
 
     def generate_key_and_cert(
         self,
         domain: str,
         alt_names: List[str] = (),
-        key_type: Literal["rsa","ecdsa","ed25519"] = "ecdsa",
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,

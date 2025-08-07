@@ -1,9 +1,9 @@
-
 import os
 import sqlite3
 from typing import Tuple, Optional, Union, List
 from certapi.crypto import Key, Certificate, certs_from_pem, cert_to_pem, certs_to_pem
 from .KeyStore import KeyStore
+
 
 class SqliteKeyStore(KeyStore):
     def __init__(self, db_path="db/database.db"):
@@ -53,7 +53,7 @@ class SqliteKeyStore(KeyStore):
             return cur.lastrowid
         elif isinstance(name, int):
             cur.execute("INSERT INTO private_keys (id, content) VALUES (?, ?)", (name, key.to_der()))
-        else: # isinstance(name, str)
+        else:  # isinstance(name, str)
             cur.execute("INSERT INTO private_keys (name, content) VALUES (?, ?)", (name, key.to_der()))
         conn.commit()
         return name
@@ -72,7 +72,11 @@ class SqliteKeyStore(KeyStore):
         return None
 
     def save_cert(
-        self, private_key_id: int | str, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
+        self,
+        private_key_id: int | str,
+        cert: Certificate | str | List[Certificate],
+        domains: List[str],
+        name: str = None,
     ) -> int:
         conn = self._get_db_connection()
         cur = conn.cursor()
@@ -143,7 +147,6 @@ class SqliteKeyStore(KeyStore):
 
         certs = self._get_cert_as_cert_list(res[2])
         return (res[0], Key.from_der(res[1]), certs)
-
 
     def find_key_by_name(self, name: str) -> Optional[Key]:
         conn = self._get_db_connection()

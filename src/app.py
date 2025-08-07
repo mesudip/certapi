@@ -20,12 +20,16 @@ from certapi.manager.acme_cert_manager import AcmeCertManager
 
 app = Flask(__name__)
 app.config["challenges"] = {}
-app.config['RESTX_MASK_SWAGGER'] = False
+app.config["RESTX_MASK_SWAGGER"] = False
 
 # Initialize Flask-RESTX API
-api = Api(app, version='1.0', title='CertManager API',
-          description='A comprehensive API for managing SSL/TLS certificates.',
-          doc='/swagger-ui')
+api = Api(
+    app,
+    version="1.0",
+    title="CertManager API",
+    description="A comprehensive API for managing SSL/TLS certificates.",
+    doc="/swagger-ui",
+)
 
 key_store: KeyStore = FileSystemKeystore("db")
 
@@ -47,21 +51,22 @@ if account_key is None:
     account_key = Key.generate("ecdsa")
     key_store.save_key(account_key, "acme_account.key")
 
-acme_issuer = AcmeCertIssuer(account_key=account_key, challenge_store=http_challenge_store) # AcmeCertIssuer expects a single challenge_store for its own use
-self_issuer = SelfCertIssuer(account_key,country="NP",state="Bagmati",organization="Sireto Technology")
+acme_issuer = AcmeCertIssuer(
+    account_key=account_key, challenge_store=http_challenge_store
+)  # AcmeCertIssuer expects a single challenge_store for its own use
+self_issuer = SelfCertIssuer(account_key, country="NP", state="Bagmati", organization="Sireto Technology")
 # acme_issuer.setup()
 
 cert_manager = AcmeCertManager(key_store=key_store, cert_issuer=self_issuer, challenge_stores=challenge_stores)
 
 # Create namespaces for each blueprint
-api_ns = Namespace('api', description='General API operations')
-key_ns = Namespace('keys', description='Key management operations')
-cert_ns = Namespace('certs', description='Certificate management operations')
+api_ns = Namespace("api", description="General API operations")
+key_ns = Namespace("keys", description="Key management operations")
+cert_ns = Namespace("certs", description="Certificate management operations")
 
 api.add_namespace(api_ns)
 api.add_namespace(key_ns)
 api.add_namespace(cert_ns)
-
 
 
 create_api_resources(api_ns, cert_manager)
@@ -88,6 +93,7 @@ def handle_acme_network_error(error: AcmeHttpError):
     print(error.__class__.__name__, error, file=sys.stderr)
     print_filtered_traceback(error)
     return jsonify({"error": error.json_obj()}), error.response.status_code
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8081, threaded=True)

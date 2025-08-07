@@ -4,8 +4,15 @@ from cryptography.x509 import Certificate
 from ..crypto.crypto import cert_to_pem, certs_to_pem
 from ..crypto.crypto_classes import Key
 
+
 class IssuedCert:
-    def __init__(self, *, key: Union[str, Key] = None, cert: Union[str, Certificate, List[Certificate]] = None, domains: List[str] = None):
+    def __init__(
+        self,
+        *,
+        key: Union[str, Key] = None,
+        cert: Union[str, Certificate, List[Certificate]] = None,
+        domains: List[str] = None,
+    ):
         if isinstance(key, Key):
             key = key.to_pem().decode("utf-8")
         elif isinstance(key, bytes):
@@ -25,9 +32,9 @@ class IssuedCert:
     @staticmethod
     def from_json(data: Dict[str, Any]) -> "IssuedCert":
         return IssuedCert(
-            key=data.get('privateKey'),
-            cert=data.get('certificate'),
-            domains=data.get('domains', []),
+            key=data.get("privateKey"),
+            cert=data.get("certificate"),
+            domains=data.get("domains", []),
         )
 
     def __repr__(self):
@@ -48,8 +55,8 @@ class CertificateResponse:
     @staticmethod
     def from_json(data: Dict[str, Any]) -> "CertificateResponse":
         return CertificateResponse(
-            existing=[IssuedCert.from_json(cert_data) for cert_data in data.get('existing', [])],
-            issued=[IssuedCert.from_json(cert_data) for cert_data in data.get('issued', [])]
+            existing=[IssuedCert.from_json(cert_data) for cert_data in data.get("existing", [])],
+            issued=[IssuedCert.from_json(cert_data) for cert_data in data.get("issued", [])],
         )
 
     def __repr__(self):

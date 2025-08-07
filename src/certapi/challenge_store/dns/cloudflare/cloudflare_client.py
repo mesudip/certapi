@@ -7,7 +7,7 @@ from urllib.request import urlopen, Request
 class Cloudflare(object):
     name = "cloudflare"
 
-    def __init__(self,api_key:str):
+    def __init__(self, api_key: str):
         self.token = api_key
         self.api = "https://api.cloudflare.com/client/v4"
         if not self.token:

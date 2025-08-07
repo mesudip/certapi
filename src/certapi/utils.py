@@ -31,4 +31,3 @@ def print_filtered_traceback(error, package_name="certapi"):
                 traceback.print_tb(tb, file=sys.stderr)
     else:
         print(f"No matching frames found in traceback for package '{package_name}'.", file=sys.stderr)
-

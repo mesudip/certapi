@@ -1,4 +1,3 @@
-
 import json
 from typing import Literal, Union
 
@@ -7,7 +6,8 @@ import requests
 from certapi.util import b64_encode, b64_string
 from certapi.crypto import digest_sha256
 from .AcmeError import *
-from .http import post,get
+from .http import post, get
+
 
 class Challenge:
     def __init__(self, auth_url, data, acme):
@@ -15,7 +15,7 @@ class Challenge:
         self._acme = acme
         self._data = data
         challenge = self.get_challenge()
-        self.token:str = challenge["token"]
+        self.token: str = challenge["token"]
         self.verified = challenge["status"] == "valid"
         self.domain = data["identifier"]["value"]  # Add domain attribute
 
@@ -25,24 +25,21 @@ class Challenge:
 
         self.url = "http://{0}/.well-known/acme-challenge/{1}".format(data["identifier"]["value"], self.token)
 
-    def as_key_value(self,type:Literal["http-01", "dns-01", "tls-alpn-01"]=None):
-        challenge=self.get_challenge(type)
+    def as_key_value(self, type: Literal["http-01", "dns-01", "tls-alpn-01"] = None):
+        challenge = self.get_challenge(type)
 
         if challenge["type"] == "dns-01":
             key = f"_acme-challenge.{self.domain}"
             value = b64_string(digest_sha256(self.authorization_key.encode("utf8")))
         else:
-            key =  self.token
-            value =  self.authorization_key
-        
-        return (key,value)
+            key = self.token
+            value = self.authorization_key
 
+        return (key, value)
 
-    def verify(self, type:Literal["http-01", "dns-01", "tls-alpn-01"]=None) -> bool:
+    def verify(self, type: Literal["http-01", "dns-01", "tls-alpn-01"] = None) -> bool:
         if not self.verified:
-            response = self._acme._signed_req(
-                self.get_challenge(type)["url"], {}, step="Verify Challenge", throw=False
-            )
+            response = self._acme._signed_req(self.get_challenge(type)["url"], {}, step="Verify Challenge", throw=False)
             if response.status_code == 200 and response.json()["status"] == "valid":
                 self.verified = True
                 return True
@@ -73,9 +70,9 @@ class Challenge:
             else:
                 return False
 
-    def get_challenge(self, type:Literal["http-01", "dns-01", "tls-alpn-01"]=None):
+    def get_challenge(self, type: Literal["http-01", "dns-01", "tls-alpn-01"] = None):
         challenges = self._data["challenges"]
-        def_key= type if type is not None else "http-01"
+        def_key = type if type is not None else "http-01"
         for method in challenges:
             if method["type"] == def_key:
                 return method

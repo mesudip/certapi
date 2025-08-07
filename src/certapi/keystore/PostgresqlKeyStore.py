@@ -1,4 +1,3 @@
-
 from contextlib import contextmanager
 from typing import Tuple, Optional, Union, List
 
@@ -89,10 +88,14 @@ class PostgresKeyStore(KeyStore):
                     conn.commit()
                     return key_id
                 elif isinstance(name, int):
-                    cur.execute("INSERT INTO private_keys (id, content) VALUES (%s, %s) RETURNING id", (name, key.to_der()))
+                    cur.execute(
+                        "INSERT INTO private_keys (id, content) VALUES (%s, %s) RETURNING id", (name, key.to_der())
+                    )
                     key_id = cur.fetchone()[0]
-                else: # isinstance(name, str)
-                    cur.execute("INSERT INTO private_keys (name, content) VALUES (%s, %s) RETURNING id", (name, key.to_der()))
+                else:  # isinstance(name, str)
+                    cur.execute(
+                        "INSERT INTO private_keys (name, content) VALUES (%s, %s) RETURNING id", (name, key.to_der())
+                    )
                     key_id = cur.fetchone()[0]
                 conn.commit()
                 return name if isinstance(name, str) else key_id
@@ -121,7 +124,11 @@ class PostgresKeyStore(KeyStore):
             return None
 
     def save_cert(
-        self, private_key_id: int | str, cert: Certificate | str | List[Certificate], domains: List[str], name: str = None
+        self,
+        private_key_id: int | str,
+        cert: Certificate | str | List[Certificate],
+        domains: List[str],
+        name: str = None,
     ) -> int:
         """Saves a certificate along with associated domains."""
         with self.get_connection() as conn:

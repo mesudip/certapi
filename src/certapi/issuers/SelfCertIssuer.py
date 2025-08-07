@@ -5,6 +5,7 @@ from cryptography.x509.oid import NameOID
 from certapi.crypto import Key, RSAKey, ECDSAKey, Ed25519Key
 from .abstract_certissuer import CertIssuer
 
+
 class SelfCertIssuer(CertIssuer):
     def __init__(
         self,
@@ -43,7 +44,7 @@ class SelfCertIssuer(CertIssuer):
                 name_attrs.append(x509.NameAttribute(oid, value))
 
         if include_user_id:
-            user_id = fields.get("user_id",domain) 
+            user_id = fields.get("user_id", domain)
             if user_id:
                 name_attrs.append(x509.NameAttribute(NameOID.USER_ID, user_id))
 

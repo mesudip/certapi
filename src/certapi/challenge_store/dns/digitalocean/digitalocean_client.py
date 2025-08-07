@@ -5,7 +5,7 @@ from urllib.request import urlopen, Request  # Python 3
 
 
 class DigitalOcean(object):
-    def __init__(self, api_key:str=None):
+    def __init__(self, api_key: str = None):
         self.token = api_key
         self.api = "https://api.digitalocean.com/v2/domains"
         if not self.token:

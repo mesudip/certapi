@@ -6,10 +6,10 @@ from .cloudflare_client import Cloudflare
 
 
 class CloudflareChallengeStore(ChallengeStore):
-    def __init__(self,api_key:str=None):
+    def __init__(self, api_key: str = None):
         self.cloudflare = Cloudflare(api_key)
-        self.challenges_map = {} 
-    
+        self.challenges_map = {}
+
     def supports_domain(self, domain: str) -> bool:
         """
         Checks if the Cloudflare account has access to the given domain (or its base domain)
@@ -29,7 +29,7 @@ class CloudflareChallengeStore(ChallengeStore):
         record_id = self.cloudflare.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
         print(f"CloudflareChallengeStore: Saved challenge for {key} with record ID {record_id}")
-        time.sleep(10) # wait for dns propagation. it may not be immediate
+        time.sleep(10)  # wait for dns propagation. it may not be immediate
 
     def get_challenge(self, key: str, domain: str) -> str:
         base_domain = self.cloudflare.determine_registered_domain(domain)
