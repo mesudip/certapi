@@ -10,6 +10,7 @@ from cryptography.x509 import CertificateSigningRequest, Certificate
 from certapi.crypto import crypto
 import requests
 from certapi.crypto import sign, digest_sha256, csr_to_der, jwk, get_algorithm_name, sign_for_jws, Key
+from certapi.crypto.crypto_classes import ECDSAKey, RSAKey
 from certapi.util import b64_encode, b64_string
 from .AcmeError import *
 from .http import *
@@ -22,11 +23,12 @@ class Acme:
     URL_STAGING = "https://acme-staging-v02.api.letsencrypt.org/directory"
     URL_PROD = "https://acme-v02.api.letsencrypt.org/directory"
 
-    def __init__(self, account_key: Union[RSAPrivateKey, EllipticCurvePrivateKey | Key], url=URL_STAGING):
-        self.account_key = account_key.key if isinstance(account_key, Key) else account_key
+    def __init__(self, account_key: Key , url=URL_STAGING):
+        self.account_key : Key = account_key
 
         # json web key format for public key
-        self.jwk = jwk(self.account_key)
+        self.jwk = account_key.jwk()
+        self.alg_name=account_key.algorithm_name()
         print(self.jwk)
         self.nonce = []
         self.acme_url = url if url else os.environ.get("ACME_API_URL", self.URL_STAGING)
@@ -72,7 +74,7 @@ class Acme:
 
         protected = {
             "url": url,
-            "alg": get_algorithm_name(self.account_key),
+            "alg":self.alg_name,
             "nonce": self.get_nonce(step),
         }
 

@@ -16,6 +16,10 @@ class Key(ABC):
     @abstractmethod
     def jwk(self):
         pass
+    
+    @abstractmethod
+    def algorithm_name(self) -> str:
+        pass
 
     @abstractmethod
     def sign(self, message: bytes):
@@ -65,6 +69,7 @@ class Key(ABC):
 
     def to_pem(self) -> bytes:
         return key_to_pem(self.key)
+
 
     def _build_name(self, fields: dict, include_user_id=False, domain=None) -> x509.Name:
         name_attrs = []
@@ -202,6 +207,8 @@ class Ed25519Key(Key):
 
     def sign_csr(self, csr):
         return csr.sign(self.key, None)
+    def algorithm_name(self):
+        return "ES384"
 
 
 class ECDSAKey(Key):
@@ -225,7 +232,15 @@ class ECDSAKey(Key):
         return self.jwk
 
     def algorithm_name(self):
-        return self.key.curve.name
+        curve_name = self.key.curve.name
+        if curve_name == "secp256r1":
+            return "ES256"
+        elif curve_name == "secp384r1":
+            return "ES384"
+        elif curve_name == "secp521r1":
+            return "ES512"
+        else:
+            raise ValueError(f"Unsupported EC curve: {curve_name}")
 
     def sign(self, message):
         key_size = self.key.curve.key_size
