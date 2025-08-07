@@ -20,7 +20,7 @@ import json
 from certapi import FileSystemChallengeStore, FilesystemKeyStore, CertAuthority
 
 key_store = FilesystemKeyStore("data")
-challenge_store = FileSystemChallengeStore("./acme-challenges")  # this should be where your web server hosts the .well-known/acme-challenges.
+challenge_store = FileSystemChallengeStore("./acme-challenges")  # this should be where your web server hosts the .well-known/
 
 certAuthority = CertAuthority(challenge_store, key_store)
 certAuthority.setup()
