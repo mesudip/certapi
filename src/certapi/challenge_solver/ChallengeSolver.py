@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 import os
 from collections.abc import MutableMapping
+from typing import Literal
 
 
-class ChallengeStore(ABC):
+class ChallengeSolver(ABC):
     """
     Abstract base class for a challenge store.
     """
@@ -24,10 +25,9 @@ class ChallengeStore(ABC):
     def delete_challenge(self, key: str, domain: str = None):
         pass
 
-    def store_details():
-        return {
-            "name": "Abstract Challenge Store",
-        }
+    @abstractmethod
+    def supported_challenge_type(self) -> Literal["http-01", "dns-01", "tls-alpn-01"]:
+        pass
 
     def __iter__(self):
         raise NotImplementedError("Must implement `__iter__` method.")

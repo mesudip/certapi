@@ -30,7 +30,10 @@ class FileSystemKeystore(KeyStore):
         if os.path.exists(key_path):
             with open(key_path, "rb") as f:
                 key_data = f.read()
-            return Key.from_pem(key_data)
+            try:
+                return Key.from_pem(key_data)
+            except:
+                pass
         return None
 
     def find_key_by_name(self, name: str) -> Optional[Key]:

@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from typing import Tuple, Optional, Union, List
+from typing import Literal, Tuple, Optional, Union, List
 from contextlib import contextmanager
 
 from abc import ABC, abstractmethod
@@ -9,10 +9,10 @@ from certapi.crypto import Key, Certificate, certs_to_pem, cert_to_pem, certs_fr
 
 
 class KeyStore(ABC):
-    def _get_or_generate_key(self, id: str | int) -> Key:
+    def _get_or_generate_key(self, id: str | int, key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa") -> Key:
         account_key = self.find_key_by_id(id)
         if account_key is None:
-            account_key = Key.generate("ecdsa")
+            account_key = Key.generate(key_type)
             id = self.save_key(account_key, id)
         return (account_key, id)
 

@@ -1,3 +1,4 @@
+import re
 import requests
 
 
@@ -47,6 +48,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                     failed_challenge: dict = [x for x in res_json["challenges"] if x["status"] == "invalid"][0]
                     error = failed_challenge["error"]
                     err_detail: str = error.get("detail")
+                    err_type: str = error.get("type")
                     validation_record: dict = failed_challenge.get("validationRecord")
                     error = {
                         "url": failed_challenge["url"],
@@ -70,7 +72,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             "resolved": validation_record["addressesResolved"],
                             "used": validation_record["addressUsed"],
                         }
-                        if error["type"] == "urn:ietf:params:acme:error:connection":
+                        if err_type == "urn:ietf:params:acme:error:connection":
                             if "Timeout during connect" in err_detail:
                                 error["connect"] = {"error": "Timeout"}
                                 message = (

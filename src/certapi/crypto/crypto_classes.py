@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from cryptography.hazmat.primitives.asymmetric import rsa, ed25519, ec
-from cryptography.hazmat.primitives import serialization, hashes, padding
+from cryptography.hazmat.primitives.asymmetric import rsa, ed25519, ec, padding
+from cryptography.hazmat.primitives import serialization, hashes
 from typing import Literal, Optional, List, Union
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric import utils
 
 from .crypto import key_to_der, key_to_pem
 from certapi.util import b64_string
@@ -16,14 +17,17 @@ class Key(ABC):
     @abstractmethod
     def jwk(self):
         pass
-    
+
     @abstractmethod
     def algorithm_name(self) -> str:
         pass
 
     @abstractmethod
-    def sign(self, message: bytes):
+    def sign(self, message: bytes) -> bytes:
         pass
+
+    def jws_sign(self, message: bytes) -> bytes:
+        return self.sign(message)
 
     @abstractmethod
     def sign_csr(self, csr: x509.CertificateSigningRequestBuilder | x509.CertificateBuilder):
@@ -69,7 +73,6 @@ class Key(ABC):
 
     def to_pem(self) -> bytes:
         return key_to_pem(self.key)
-
 
     def _build_name(self, fields: dict, include_user_id=False, domain=None) -> x509.Name:
         name_attrs = []
@@ -188,7 +191,7 @@ class Ed25519Key(Key):
         public = self.key.public_key().public_bytes(
             encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
         )
-        self.jwk = {
+        self._jwk = {
             "crv": "Ed25519",
             "kty": "OKP",
             "x": b64_string(public),
@@ -200,15 +203,16 @@ class Ed25519Key(Key):
         return Ed25519Key(key)
 
     def jwk(self):
-        return self.jwk
+        return self._jwk
 
     def sign(self, message):
         return self.key.sign(message)
 
+    def algorithm_name(self):
+        return "EdDSA"
+
     def sign_csr(self, csr):
         return csr.sign(self.key, None)
-    def algorithm_name(self):
-        return "ES384"
 
 
 class ECDSAKey(Key):
@@ -216,7 +220,7 @@ class ECDSAKey(Key):
         self.key = key
         public_key = self.key.public_key()
         public_numbers = public_key.public_numbers()
-        self.jwk = {
+        self._jwk = {
             "kty": "EC",
             "crv": self.key.curve.name,
             "x": b64_string(public_numbers.x.to_bytes((public_numbers.x.bit_length() + 7) // 8, "big")),
@@ -229,7 +233,7 @@ class ECDSAKey(Key):
         return ECDSAKey(key)
 
     def jwk(self):
-        return self.jwk
+        return self._jwk
 
     def algorithm_name(self):
         curve_name = self.key.curve.name
@@ -253,6 +257,15 @@ class ECDSAKey(Key):
         else:
             raise ValueError(f"Unsupported curve with key size {key_size}")
         return self.key.sign(message, ec.ECDSA(algorithm))
+
+    def jws_sign(self, message: bytes) -> bytes:
+        print("Jws sign")
+        der_sig = self.sign(message)
+        r, s = utils.decode_dss_signature(der_sig)
+        num_bytes = (self.key.curve.key_size + 7) // 8
+        r_bytes = r.to_bytes(num_bytes, "big")
+        s_bytes = s.to_bytes(num_bytes, "big")
+        return r_bytes + s_bytes
 
     def sign_csr(self, csr):
         key_size = self.key.curve.key_size

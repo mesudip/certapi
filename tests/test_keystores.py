@@ -1,7 +1,7 @@
 import pytest
 import os
-import psycopg2 # Added for PostgreSQL database creation
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT # Added for PostgreSQL database creation
+import psycopg2  # Added for PostgreSQL database creation
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT  # Added for PostgreSQL database creation
 
 from certapi import Key, Certificate
 from certapi.crypto.crypto import cert_to_pem, certs_to_pem
@@ -14,9 +14,11 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from datetime import datetime, timedelta
 
+
 @pytest.fixture(scope="session")
 def ca_key():
     return Key.generate("ecdsa")
+
 
 @pytest.fixture(params=["sqlite", "filesystem", "postgresql"])
 def keystore(request, tmp_path):
@@ -33,6 +35,7 @@ def keystore(request, tmp_path):
         yield store
         # Clean up after test
         import shutil
+
         if os.path.exists(base_dir):
             shutil.rmtree(base_dir)
     elif request.param == "postgresql":
@@ -62,7 +65,8 @@ def keystore(request, tmp_path):
             conn.commit()
             cur.close()
 
-def test_save_and_find_key(keystore:KeyStore):
+
+def test_save_and_find_key(keystore: KeyStore):
     key = Key.generate("rsa")
     key_id = keystore.save_key(key, "test_key")
     assert key_id is not None
@@ -71,12 +75,13 @@ def test_save_and_find_key(keystore:KeyStore):
     assert found_key is not None
     assert found_key.to_pem() == key.to_pem()
 
-def test_save_and_find_cert(keystore:KeyStore, ca_key: Key):
+
+def test_save_and_find_cert(keystore: KeyStore, ca_key: Key):
     key = Key.generate("rsa")
     key_id = keystore.save_key(key, "cert_key")
 
     csr = key.create_csr(domain="example.com", alt_names=["example.com"])
-    
+
     cert = sign_csr(csr, ca_key, 7)
 
     cert_id = keystore.save_cert(key_id, cert, ["example.com"], "test_cert")
@@ -92,15 +97,17 @@ def test_save_and_find_cert(keystore:KeyStore, ca_key: Key):
     assert cert_to_pem(found_certs[0]) == cert_to_pem(cert)
 
 
-def test_get_non_existent_key(keystore:KeyStore):
+def test_get_non_existent_key(keystore: KeyStore):
     found_key = keystore.find_key_by_name("non_existent_key")
     assert found_key is None
 
-def test_get_non_existent_cert(keystore:KeyStore):
+
+def test_get_non_existent_cert(keystore: KeyStore):
     found_cert = keystore.find_key_and_cert_by_domain("nonexistent.com")
     assert found_cert is None
 
-def test_save_key_with_int_id(keystore:KeyStore):
+
+def test_save_key_with_int_id(keystore: KeyStore):
     key = Key.generate("ecdsa")
     key_id = keystore.save_key(key, 123)
     assert key_id == 123 or key_id == "123"
@@ -108,6 +115,7 @@ def test_save_key_with_int_id(keystore:KeyStore):
     found_key = keystore.find_key_by_id(123)
     assert found_key is not None
     assert found_key.to_pem() == key.to_pem()
+
 
 def test_save_cert_with_list_of_certs(keystore, ca_key: Key):
     key = Key.generate("rsa")
@@ -133,15 +141,16 @@ def test_save_cert_with_list_of_certs(keystore, ca_key: Key):
     assert cert_to_pem(found_certs[0]) == cert_to_pem(cert1)
     assert cert_to_pem(found_certs[1]) == cert_to_pem(cert2)
 
-def test_get_cert_by_id(keystore:KeyStore, ca_key: Key):
+
+def test_get_cert_by_id(keystore: KeyStore, ca_key: Key):
     key = Key.generate("rsa")
-    domain ='example.com'
-    
+    domain = "example.com"
+
     key_id = keystore.save_key(key, domain)
 
     csr = key.create_csr(domain=domain, alt_names=[domain])
     cert = sign_csr(csr, ca_key, 1)
-    
+
     cert_id = keystore.save_cert(key_id, cert, [domain], domain)
     assert cert_id is not None
 
@@ -151,7 +160,6 @@ def test_get_cert_by_id(keystore:KeyStore, ca_key: Key):
     assert found_key.to_pem() == key.to_pem()
     assert len(found_certs) == 1
     assert cert_to_pem(found_certs[0]) == cert_to_pem(cert)
-
 
 
 def sign_csr(csr: x509.CertificateSigningRequest, issuer_key: Key, days_valid=365) -> Certificate:

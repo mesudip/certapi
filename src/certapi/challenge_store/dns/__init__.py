@@ -1,2 +1,0 @@
-from .digitalocean.digitalocean_challenge_store import DigitalOceanChallengeStore
-from .cloudflare.cloudflare_challenge_store import CloudflareChallengeStore

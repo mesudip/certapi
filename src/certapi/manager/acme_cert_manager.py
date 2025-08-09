@@ -3,7 +3,7 @@ from typing import List, Literal, Optional, Tuple, Union, Dict
 
 from certapi import crypto
 from ..acme import Challenge
-from ..challenge_store import ChallengeStore
+from ..challenge_solver import ChallengeSolver
 
 from ..issuers import AcmeCertIssuer, CertIssuer
 from ..http.types import CertificateResponse, IssuedCert
@@ -17,12 +17,12 @@ class AcmeCertManager:
         self,
         key_store: KeyStore,
         cert_issuer: AcmeCertIssuer,
-        challenge_stores: List[ChallengeStore] = [],
+        challenge_solvers: List[ChallengeSolver] = [],
     ):
         self.key_store: KeyStore = key_store
         self.cert_issuer: AcmeCertIssuer = cert_issuer
-        self.challenge_stores: List[ChallengeStore] = challenge_stores
-        print(f"AcmeCertManager initialized with challenge_stores: {self.challenge_stores}")
+        self.challenge_solvers: List[ChallengeSolver] = challenge_solvers
+        print(f"AcmeCertManager initialized with challenge_solvers: {self.challenge_solvers}")
 
     def setup(self):
         self.cert_issuer.setup()
@@ -36,16 +36,16 @@ class AcmeCertManager:
             raise ValueError("CSR does not contain any hostnames.")
 
         # Find a challenge store that supports all hostnames in the CSR
-        selected_challenge_store = None
-        for store in self.challenge_stores:
+        selected_challenge_solver = None
+        for store in self.challenge_solvers:
             if all(store.supports_domain(h) for h in hostnames):
-                selected_challenge_store = store
+                selected_challenge_solver = store
                 break
 
-        if selected_challenge_store is None:
+        if selected_challenge_solver is None:
             raise ValueError(f"No challenge store found that supports all domains: {hostnames}")
 
-        fullchain_cert = self.cert_issuer.sign_csr(csr, challenge_store=selected_challenge_store)
+        fullchain_cert = self.cert_issuer.sign_csr(csr, challenge_solver=selected_challenge_solver)
         if fullchain_cert:
             # Assuming the private key associated with the CSR is not managed by CertManager directly
             # and is handled by the caller or the cert_issuer's internal process.
@@ -81,17 +81,11 @@ class AcmeCertManager:
         if len(missing) > 0:
             issued_certs_list = []
             # Group missing hosts by the challenge store that supports them
-            domains_by_store: Dict[ChallengeStore, List[str]] = {}
+            domains_by_store: Dict[ChallengeSolver, List[str]] = {}
             for host in missing:
                 found_store = None
-                for store in self.challenge_stores:
-                    print(
-                        f"Debug: Checking store {store} for domain {host}. supports_domain: {store.supports_domain(host)}"
-                    )
+                for store in self.challenge_solvers:
                     if store.supports_domain(host):
-                        print(
-                            f"Supports domain: '{host}'",
-                        )
                         found_store = store
                         break
                 if found_store is not None:
@@ -99,10 +93,7 @@ class AcmeCertManager:
                         domains_by_store[found_store] = []
                     domains_by_store[found_store].append(host)
                 else:
-                    print(f"Debug: Current challenge_stores: {self.challenge_stores}")
-                    print(f"Warning: No challenge store found that supports domain: {host}. Skipping.")
-
-            # original_challenge_store = self.cert_issuer.challenge_store # Store original
+                    print(f"Warning: No challenge solver found that supports domain: {host}. Skipping.")
 
             for store, domains_to_issue in domains_by_store.items():
 
@@ -115,7 +106,7 @@ class AcmeCertManager:
                     locality=locality,
                     organization=organization,
                     user_id=user_id,
-                    challenge_store=store,
+                    challenge_solver=store,
                 )
 
                 if fullchain_cert:
@@ -125,7 +116,7 @@ class AcmeCertManager:
                 else:
                     print(f"Failed to issue certificate for domains: {domains_to_issue}")
 
-            # self.cert_issuer.challenge_store = original_challenge_store # Restore original
+            # self.cert_issuer.challenge_solver = original_challenge_solver # Restore original
             return createExistingResponse(existing, issued_certs_list)
 
         else:

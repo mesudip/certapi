@@ -3,8 +3,8 @@ from typing import List, Literal, Optional, Union
 from cryptography import x509
 from cryptography.x509.oid import NameOID, ExtensionOID
 from certapi.crypto.crypto import get_csr_hostnames
-from certapi.crypto.crypto_classes import ECDSAKey, Ed25519Key, RSAKey
-from ..challenge_store import ChallengeStore
+from certapi.crypto.crypto_classes import ECDSAKey, Ed25519Key, Key, RSAKey
+from ..challenge_solver import ChallengeSolver
 
 
 class CertIssuer(ABC):
@@ -37,12 +37,21 @@ class CertIssuer(ABC):
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
-        challenge_store: Optional[ChallengeStore] = None,
+        challenge_solver: Optional[ChallengeSolver] = None,
     ):
         if len(hosts) == 0:
             raise ValueError("CertIssuer.generate_key_and_cert_for_domains: empty hosts array provided")
         return self.generate_key_and_cert(
-            hosts[0], hosts[0:], key_type, expiry_days, country, state, locality, organization, user_id, challenge_store
+            hosts[0],
+            hosts[0:],
+            key_type,
+            expiry_days,
+            country,
+            state,
+            locality,
+            organization,
+            user_id,
+            challenge_solver,
         )
 
     def generate_key_and_cert_for_domain(
@@ -55,11 +64,11 @@ class CertIssuer(ABC):
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
-        challenge_store: Optional[ChallengeStore] = None,
+        challenge_solver: Optional[ChallengeSolver] = None,
     ):
 
         return self.generate_key_and_cert(
-            host, [], key_type, expiry_days, country, state, locality, organization, user_id, challenge_store
+            host, [], key_type, expiry_days, country, state, locality, organization, user_id, challenge_solver
         )
 
     def generate_key_and_cert(
@@ -73,18 +82,10 @@ class CertIssuer(ABC):
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
-        challenge_store: Optional[ChallengeStore] = None,
+        challenge_solver: Optional[ChallengeSolver] = None,
     ) -> tuple:
         """Create a new certificate with a generated key."""
-        # Generate new key based on key_type
-        if key_type == "rsa":
-            new_key = RSAKey.generate()
-        elif key_type == "ecdsa":
-            new_key = ECDSAKey.generate()
-        elif key_type == "ed25519":
-            new_key = Ed25519Key.generate()
-        else:
-            raise ValueError("Unsupported key type. Use 'rsa' or 'ecdsa'")
+        new_key = Key.generate(key_type)
 
         # Create CSR using the new key
         csr = new_key.create_csr(

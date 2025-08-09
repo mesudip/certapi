@@ -39,7 +39,9 @@ class Challenge:
 
     def verify(self, type: Literal["http-01", "dns-01", "tls-alpn-01"] = None) -> bool:
         if not self.verified:
-            response = self._acme._signed_req(self.get_challenge(type)["url"], {}, step="Verify Challenge", throw=False)
+            response = self._acme._signed_req(
+                self.get_challenge(type)["url"], {}, step=f"Verify Challenge [{self.domain}]", throw=False
+            )
             if response.status_code == 200 and response.json()["status"] == "valid":
                 self.verified = True
                 return True
@@ -49,7 +51,7 @@ class Challenge:
     def self_verify(self) -> Union[bool, requests.Response]:
         identifier = self._data["identifier"]
         if identifier["type"] == "dns":
-            res = get("Self Domain verification", self.url)
+            res = get(f"Self Domain verification [{self.domain}]", self.url)
             if res.status_code == 200 and res.content == self.token.encode():
                 return True
             else:
@@ -60,13 +62,13 @@ class Challenge:
         if self.verified:
             return True
         else:
-            res = self._acme._signed_req(self._auth_url, step="Acme Challenge Verification")
+            res = self._acme._signed_req(self._auth_url, step=f"Query Challenge Status [{self.domain}]")
             res_json = res.json()
             if res_json["status"] == "valid":
                 self.verified = True
                 return True
             elif res_json["status"] == "invalid":
-                raise AcmeInvaliOrderError(res, "Acme Challenge Verification")
+                raise AcmeInvaliOrderError(res, "Query Challenge Status")
             else:
                 return False
 
@@ -81,7 +83,7 @@ class Challenge:
 
         ch_types = [x["type"] for x in self._data["challenges"]]
         raise AcmeError(
-            f"'{type}' not found in challenges. available:{str(ch_types)}",
+            f"'{type}' not found in challenges for {self.domain}, available: {','.join(ch_types)}",
             {"response": self._data["challenges"]},
-            "Acme Challenge Verification",
+            "Query Challenge Status",
         )

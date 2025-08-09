@@ -1,22 +1,25 @@
 import os
-import time
 from collections.abc import MutableMapping
-from ...ChallengeStore import ChallengeStore
-from .cloudflare_client import Cloudflare
+from typing import Literal
+from ...ChallengeSolver import ChallengeSolver
+from .digitalocean_client import DigitalOcean
 
 
-class CloudflareChallengeStore(ChallengeStore):
+class DigitalOceanChallengeSolver(ChallengeSolver):
     def __init__(self, api_key: str = None):
-        self.cloudflare = Cloudflare(api_key)
-        self.challenges_map = {}
+        self.digitalocean = DigitalOcean(api_key)
+        self.challenges_map = {}  # Stores key: record_id (needed for deletion)
+
+    def supported_challenge_type(self) -> Literal["dns-01"]:
+        return "dns-01"
 
     def supports_domain(self, domain: str) -> bool:
         """
-        Checks if the Cloudflare account has access to the given domain (or its base domain)
+        Checks if the DigitalOcean account has access to the given domain (or its base domain)
         as a registered zone.
         """
         try:
-            self.cloudflare.determine_registered_domain(domain)
+            self.digitalocean.determine_domain(domain)
             return True
         except Exception:
             return False
@@ -24,19 +27,18 @@ class CloudflareChallengeStore(ChallengeStore):
     def save_challenge(self, key: str, value: str, domain=None):
         # key example: _acme-challenge.sub.example.com
         # value example: ACME_CHALLENGE_TOKEN
-        base_domain = self.cloudflare.determine_registered_domain(domain)
+        base_domain = self.digitalocean.determine_domain(domain)
 
-        record_id = self.cloudflare.create_record(name=key, data=value, domain=base_domain)
+        record_id = self.digitalocean.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
-        print(f"CloudflareChallengeStore: Saved challenge for {key} with record ID {record_id}")
-        time.sleep(10)  # wait for dns propagation. it may not be immediate
+        print(f"DigitalOceanChallengeStore: Saved challenge for {key} with record ID {record_id}")
 
     def get_challenge(self, key: str, domain: str) -> str:
-        base_domain = self.cloudflare.determine_registered_domain(domain)
-        records = self.cloudflare.list_txt_records(base_domain, name_filter=key)
+        base_domain = self.digitalocean.determine_domain(domain)
+        records = self.digitalocean.list_records(base_domain, name_filter=key)
         for record in records:
             if record["name"] == key:
-                return record["content"]
+                return record["data"]  # DigitalOcean API returns 'data' for TXT record content
         return None  # Return None if not found, as per ChallengeStore's __getitem__ behavior
 
     def delete_challenge(self, key: str, domain: str):
@@ -44,10 +46,10 @@ class CloudflareChallengeStore(ChallengeStore):
             raise KeyError(f"Challenge {key} not found in store (no record_id stored).")
 
         record_id = self.challenges_map[key]
-        base_domain = self.cloudflare.determine_registered_domain(domain)
-        self.cloudflare.delete_record(record=record_id, domain=base_domain)
+        base_domain = self.digitalocean.determine_domain(domain)
+        self.digitalocean.delete_record(record=record_id, domain=base_domain)
         del self.challenges_map[key]
-        print(f"CloudflareChallengeStore: Deleted challenge for {key} with record ID {record_id}")
+        print(f"DigitalOceanChallengeStore: Deleted challenge for {key} with record ID {record_id}")
 
     def __iter__(self):
         # This is tricky as we can't easily iterate all challenges across all domains

@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.x509 import CertificateSigningRequest, Certificate
 from certapi.crypto import crypto
 import requests
-from certapi.crypto import sign, digest_sha256, csr_to_der, jwk, get_algorithm_name, sign_for_jws, Key
+from certapi.crypto import Key
 from certapi.crypto.crypto_classes import ECDSAKey, RSAKey
 from certapi.util import b64_encode, b64_string
 from .AcmeError import *
@@ -23,12 +23,12 @@ class Acme:
     URL_STAGING = "https://acme-staging-v02.api.letsencrypt.org/directory"
     URL_PROD = "https://acme-v02.api.letsencrypt.org/directory"
 
-    def __init__(self, account_key: Key , url=URL_STAGING):
-        self.account_key : Key = account_key
+    def __init__(self, account_key: Key, url=URL_STAGING):
+        self.account_key: Key = account_key
 
         # json web key format for public key
         self.jwk = account_key.jwk()
-        self.alg_name=account_key.algorithm_name()
+        self.alg_name = account_key.algorithm_name()
         print(self.jwk)
         self.nonce = []
         self.acme_url = url if url else os.environ.get("ACME_API_URL", self.URL_STAGING)
@@ -74,7 +74,7 @@ class Acme:
 
         protected = {
             "url": url,
-            "alg":self.alg_name,
+            "alg": self.alg_name,
             "nonce": self.get_nonce(step),
         }
 
@@ -82,11 +82,12 @@ class Acme:
             protected["kid"] = self.key_id
         else:
             protected["jwk"] = self.jwk
+
         protectedb64 = b64_encode(protected)
         payload = {
             "protected": protectedb64.decode("utf-8"),
             "payload": payload64.decode("utf-8"),
-            "signature": b64_string(sign_for_jws(self.account_key, b".".join([protectedb64, payload64]))),
+            "signature": b64_string(self.account_key.jws_sign(b".".join([protectedb64, payload64]))),
         }
         try:
 

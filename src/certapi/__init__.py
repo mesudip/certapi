@@ -13,11 +13,11 @@ from .crypto import (
     EllipticCurvePrivateKey,
 )
 from .keystore import FileSystemKeystore, SqliteKeyStore, PostgresKeyStore, KeyStore
-from .challenge_store import (
-    ChallengeStore,
-    InMemoryChallengeStore,
-    FileSystemChallengeStore,
-    CloudflareChallengeStore,
-    DigitalOceanChallengeStore,
+from .challenge_solver import (
+    ChallengeSolver,
+    InMemoryChallengeSolver,
+    FilesystemChallengeSolver,
+    CloudflareChallengeSolver,
+    DigitalOceanChallengeSolver,
 )
 from .issuers import SelfCertIssuer

@@ -1,0 +1,2 @@
+from .digitalocean.digitalocean_challenge_solver import DigitalOceanChallengeSolver
+from .cloudflare.cloudflare_challenge_solver import CloudflareChallengeSolver

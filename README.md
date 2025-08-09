@@ -17,12 +17,12 @@ pip install certapi
 
 ```python
 import json
-from certapi import FileSystemChallengeStore, FilesystemKeyStore, CertAuthority
+from certapi import FileSystemChallengeSolver, FilesystemKeyStore, CertAuthority
 
 key_store = FilesystemKeyStore("data")
-challenge_store = FileSystemChallengeStore("./acme-challenges")  # this should be where your web server hosts the .well-known/
+challenge_solver = FileSystemChallengeSolver("./acme-challenges")  # this should be where your web server hosts the .well-known/
 
-certAuthority = CertAuthority(challenge_store, key_store)
+certAuthority = CertAuthority(challenge_solver, key_store)
 certAuthority.setup()
 
 (response,_) = certAuthority.obtainCert("example.com")

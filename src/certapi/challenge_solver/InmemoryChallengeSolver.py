@@ -1,13 +1,17 @@
-from .ChallengeStore import ChallengeStore
+from typing import Literal
+from .ChallengeSolver import ChallengeSolver
 
 
-class InMemoryChallengeStore(ChallengeStore):
+class InMemoryChallengeSolver(ChallengeSolver):
     """
     In-memory implementation of the ChallengeStore.
     """
 
     def __init__(self):
         self.challenges = {}
+
+    def supported_challenge_type(self) -> Literal["http-01"]:
+        return "http-01"
 
     def save_challenge(self, key: str, value: str, domain: str = None):
         self.challenges[key] = value

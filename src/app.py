@@ -11,8 +11,8 @@ from certapi.server.key_api import create_key_resources
 from certapi.server.cert_api import create_cert_resources
 from certapi.acme.Acme import AcmeError, AcmeHttpError, AcmeNetworkError
 from certapi.utils import print_filtered_traceback
-from certapi.challenge_store import ChallengeStore, FileSystemChallengeStore
-from certapi.challenge_store.dns.cloudflare.cloudflare_challenge_store import CloudflareChallengeStore
+from certapi.challenge_solver import ChallengeSolver, FilesystemChallengeSolver
+from certapi.challenge_solver.dns.cloudflare.cloudflare_challenge_solver import CloudflareChallengeSolver
 from certapi.keystore import KeyStore, FileSystemKeystore
 from certapi.issuers import AcmeCertIssuer, SelfCertIssuer
 from certapi.manager.acme_cert_manager import AcmeCertManager
@@ -33,17 +33,17 @@ api = Api(
 
 key_store: KeyStore = FileSystemKeystore("db")
 
-challenge_stores: List[ChallengeStore] = []
+challenge_solvers: List[ChallengeSolver] = []
 
 # HTTP Challenge Store
 
 
 # DNS Challenge Stores
 if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
-    challenge_stores.append(CloudflareChallengeStore())
+    challenge_solvers.append(CloudflareChallengeSolver())
 
-http_challenge_store = FileSystemChallengeStore("acme-challenges")
-challenge_stores.append(http_challenge_store)
+http_challenge_solver = FilesystemChallengeSolver("acme-challenges")
+challenge_solvers.append(http_challenge_solver)
 
 # Create an account key if it doesn't exist
 account_key = key_store.find_key_by_name("acme_account.key")
@@ -52,12 +52,12 @@ if account_key is None:
     key_store.save_key(account_key, "acme_account.key")
 
 acme_issuer = AcmeCertIssuer(
-    account_key=account_key, challenge_store=http_challenge_store
-)  # AcmeCertIssuer expects a single challenge_store for its own use
+    account_key=account_key, challenge_solver=http_challenge_solver
+)  # AcmeCertIssuer expects a single challenge_solver for its own use
 self_issuer = SelfCertIssuer(account_key, country="NP", state="Bagmati", organization="Sireto Technology")
 # acme_issuer.setup()
 
-cert_manager = AcmeCertManager(key_store=key_store, cert_issuer=self_issuer, challenge_stores=challenge_stores)
+cert_manager = AcmeCertManager(key_store=key_store, cert_issuer=self_issuer, challenge_solvers=challenge_solvers)
 
 # Create namespaces for each blueprint
 api_ns = Namespace("api", description="General API operations")
@@ -76,7 +76,7 @@ create_cert_resources(cert_ns, key_store)
 
 @app.route("/.well-known/acme-challenge/<cid>", methods=["GET"])
 def acme_challenge(cid):
-    r = http_challenge_store.get_challenge(cid)
+    r = http_challenge_solver.get_challenge(cid)
     print(f"[{request.method}] /.well-known/acme-challenge/{cid} = {r}")
     return "", 404 if r is None else (r, 200)
 
