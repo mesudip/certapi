@@ -16,8 +16,8 @@ acme-challenges/
 build/
 src/certapi.egg-info
 .well-known/
-.vscode
+/.vscode
+!/.vscode/launch.json
 .venv
 .env
-.D
 test_db_temp/

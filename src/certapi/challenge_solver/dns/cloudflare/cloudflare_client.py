@@ -116,7 +116,7 @@ class Cloudflare(object):
         if response.getcode() != 200:
             print(f"Create TXT record [{response.getcode()}]", result)
             raise Exception(json.loads(response.read().decode("utf8")))
-        
+
         return json.loads(result)["result"]["id"]
 
     def delete_record(self, record, domain):

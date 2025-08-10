@@ -3,10 +3,6 @@ Chatgpt says that when obtaining cert, there is alternate link that contains the
 Link: <https://acme-v02.api.letsencrypt.org/acme/cert/XYZ>;rel="alternate"
 - [x] The response already had fullchain cert, it was issue on the keystore part
 
-## Create class for FullChain certs
-It's simply array of certificates, but it changes serialization/deserilization logic 
-- [x] This has been done needs validation. 
-
 
 ## Did not request certificate
 Valid configuration   	Id:4329b56b0bba	    nginx-external_configs-1
