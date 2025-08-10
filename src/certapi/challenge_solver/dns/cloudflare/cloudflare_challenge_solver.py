@@ -32,8 +32,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
 
         record_id = self.cloudflare.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
-        print(f"CloudflareChallengeStore: Saved challenge for {key} with record ID {record_id}")
-        time.sleep(10)  # wait for dns propagation. it may not be immediate
+        print(f"CloudflareChallengeStore[{domain}]: Added Record {key}")
 
     def get_challenge(self, key: str, domain: str) -> str:
         base_domain = self.cloudflare.determine_registered_domain(domain)

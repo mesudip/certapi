@@ -85,6 +85,7 @@ class Cloudflare(object):
 
         result = json.loads(response.read().decode("utf8"))
         if not result.get("success"):
+            print(f"List TXT record [{response.getcode()}]", result)
             raise Exception(result.get("errors", "Unknown error listing TXT records"))
 
         return result["result"]
@@ -111,10 +112,11 @@ class Cloudflare(object):
             "proxied": False,
         }
         response = urlopen(Request(api_url, data=json.dumps(request_data).encode("utf8"), headers=request_headers))
-
-        if response.getcode() != 200:
-            raise Exception(json.loads(response.read().decode("utf8")))
         result = response.read().decode("utf8")
+        if response.getcode() != 200:
+            print(f"Create TXT record [{response.getcode()}]", result)
+            raise Exception(json.loads(response.read().decode("utf8")))
+        
         return json.loads(result)["result"]["id"]
 
     def delete_record(self, record, domain):
@@ -132,6 +134,6 @@ class Cloudflare(object):
         request.get_method = lambda: "DELETE"
         response = urlopen(request)
         result = response.read().decode("utf8")
-        print(f"Delete dns record [{response.getcode()}]", result)
         if response.getcode() != 200:
+            print(f"Delete dns record [{response.getcode()}]", result)
             raise Exception(json.loads(response.read().decode("utf8")))
