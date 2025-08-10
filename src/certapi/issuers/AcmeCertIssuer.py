@@ -43,12 +43,18 @@ class AcmeCertIssuer(CertIssuer):
         for c in challenges:
             if self.self_verify_challenge:
                 c.self_verify()
-            c.verify()
+
         end = time.time() + max(len(challenges) * 10, 300)
         remaining_now: List[Challenge] = [x for x in challenges]
         next_remaining = []
         counter = 1
 
+        if challenge_solver.supported_challenge_type() == "dns-01":
+            print("Waiting 10 seconds for DNS propagation .. ")
+            time.sleep(10)  # sleep 7 seconds for dns propagation
+
+        for c in challenges:
+            c.verify(challenge_solver.supported_challenge_type())
         while len(remaining_now) > 0:
             if time.time() > end and counter > 4:
                 print("Order finalization time out")
