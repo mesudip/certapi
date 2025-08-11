@@ -2,6 +2,7 @@ import json
 import time
 from os import getenv
 from urllib.request import urlopen, Request
+from certapi.errors import CertApiException
 
 
 class Cloudflare(object):
@@ -13,7 +14,7 @@ class Cloudflare(object):
         if not self.token:
             self.token = getenv("CLOUDFLARE_API_KEY")
             if not self.token:
-                raise Exception("CLOUDFLARE_API_KEY not found in environment")
+                raise CertApiException("CLOUDFLARE_API_KEY not found in environment", step="Cloudflare.__init__")
 
         self._zones_cache = None
         self._zones_cache_time = 0  # Unix timestamp of last cache update
@@ -31,7 +32,11 @@ class Cloudflare(object):
         api_url = "{0}/zones?per_page=50".format(self.api)
         response = urlopen(Request(api_url, headers=request_headers))
         if response.getcode() != 200:
-            raise Exception(json.loads(response.read().decode("utf8")))
+            raise CertApiException(
+                "Cloudflare API error",
+                detail=json.loads(response.read().decode("utf8")),
+                step="Cloudflare._get_zones"
+            )
 
         zones = json.loads(response.read().decode("utf8"))["result"]
         self._zones_cache = zones
@@ -44,7 +49,11 @@ class Cloudflare(object):
         for zone in zones:
             if zone["name"] == domain:
                 return zone["id"]
-        raise Exception("No Cloudflare zone found for domain: {0}".format(domain))
+        raise CertApiException(
+            "No Cloudflare zone found for domain",
+            detail={"domain": domain},
+            step="Cloudflare._get_zone_id"
+        )
 
     def determine_registered_domain(self, domain: str) -> str:
         """
@@ -62,9 +71,13 @@ class Cloudflare(object):
                 err = e
                 continue
         if err:
-            raise err
+            raise CertApiException(str(err), step="Cloudflare.determine_registered_domain")
         else:
-            raise Exception("Could not determine Cloudflare registered domain for: {0}".format(domain))
+            raise CertApiException(
+                "Could not determine Cloudflare registered domain",
+                detail={"domain": domain},
+                step="Cloudflare.determine_registered_domain"
+            )
 
     def list_txt_records(self, domain: str, name_filter: str = None) -> list:
         """
@@ -81,12 +94,20 @@ class Cloudflare(object):
         response = urlopen(Request(api_url, headers=request_headers))
 
         if response.getcode() != 200:
-            raise Exception(json.loads(response.read().decode("utf8")))
+            raise CertApiException(
+                "Cloudflare API error",
+                detail=json.loads(response.read().decode("utf8")),
+                step="Cloudflare.list_txt_records"
+            )
 
         result = json.loads(response.read().decode("utf8"))
         if not result.get("success"):
             print(f"List TXT record [{response.getcode()}]", result)
-            raise Exception(result.get("errors", "Unknown error listing TXT records"))
+            raise CertApiException(
+                "Unknown error listing TXT records",
+                detail=result.get("errors", "Unknown error listing TXT records"),
+                step="Cloudflare.list_txt_records"
+            )
 
         return result["result"]
 
@@ -115,7 +136,11 @@ class Cloudflare(object):
         result = response.read().decode("utf8")
         if response.getcode() != 200:
             print(f"Create TXT record [{response.getcode()}]", result)
-            raise Exception(json.loads(response.read().decode("utf8")))
+            raise CertApiException(
+                "Cloudflare API error",
+                detail=json.loads(result),
+                step="Cloudflare.create_record"
+            )
 
         return json.loads(result)["result"]["id"]
 
@@ -136,4 +161,8 @@ class Cloudflare(object):
         result = response.read().decode("utf8")
         if response.getcode() != 200:
             print(f"Delete dns record [{response.getcode()}]", result)
-            raise Exception(json.loads(response.read().decode("utf8")))
+            raise CertApiException(
+                "Cloudflare API error",
+                detail=json.loads(result),
+                step="Cloudflare.delete_record"
+            )

@@ -1,8 +1,7 @@
 import pytest
 from datetime import datetime
 from cryptography import x509
-from cryptography.hazmat.primitives.asymmetric import rsa, ec, ed25519
-from certapi import Key, SelfCertIssuer, Certificate, CertificateSigningRequest, CertificateSigningRequestBuilder
+from certapi import Key, SelfCertIssuer
 
 
 @pytest.mark.parametrize("ca_key_type", ["rsa", "ecdsa", "ed25519"])
@@ -30,12 +29,12 @@ def test_ca_and_leaf_cert_all_key_pairs(ca_key_type, csr_key_type):
     # Assertions
     assert isinstance(ca_cert, x509.Certificate)
     assert ca_cert.subject == ca_cert.issuer  # Self-signed
-    assert isinstance(ca_cert.not_valid_before, datetime)
-    assert isinstance(ca_cert.not_valid_after, datetime)
+    assert isinstance(ca_cert.not_valid_before_utc, datetime)
+    assert isinstance(ca_cert.not_valid_after_utc, datetime)
     assert ca_cert.issuer.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value == "testca.local"
 
     assert isinstance(leaf_cert, x509.Certificate)
-    assert leaf_cert.not_valid_after > leaf_cert.not_valid_before
+    assert leaf_cert.not_valid_after_utc > leaf_cert.not_valid_before_utc
     assert leaf_cert.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value == "example.com"
 
     # Check issuer consistency

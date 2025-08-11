@@ -5,7 +5,7 @@ import os
 
 class FilesystemChallengeSolver(ChallengeSolver):
     """
-    Filesystem implementation of the ChallengeStore.
+    Filesystem implementation of the ChallengeSolver.
     This should never be used, but extended for your webserver e.g. nginx, apache etc.
     """
 
@@ -35,6 +35,12 @@ class FilesystemChallengeSolver(ChallengeSolver):
 
     def supported_challenge_type(self) -> Literal["http-01"]:
         return "http-01"
+
+    def cleanup_old_challenges(self):
+        for filename in os.listdir(self.directory):
+            file_path = os.path.join(self.directory, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
     def __iter__(self):
         return (f for f in os.listdir(self.directory) if os.path.isfile(os.path.join(self.directory, f)))

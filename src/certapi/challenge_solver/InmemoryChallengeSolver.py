@@ -4,7 +4,7 @@ from .ChallengeSolver import ChallengeSolver
 
 class InMemoryChallengeSolver(ChallengeSolver):
     """
-    In-memory implementation of the ChallengeStore.
+    In-memory implementation of the ChallengeSolver.
     """
 
     def __init__(self):

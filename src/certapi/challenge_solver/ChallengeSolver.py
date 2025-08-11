@@ -29,6 +29,10 @@ class ChallengeSolver(ABC):
     def supported_challenge_type(self) -> Literal["http-01", "dns-01", "tls-alpn-01"]:
         pass
 
+    @abstractmethod
+    def cleanup_old_challenges(self):
+        pass
+
     def __iter__(self):
         raise NotImplementedError("Must implement `__iter__` method.")
 

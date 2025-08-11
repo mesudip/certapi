@@ -3,6 +3,7 @@ from collections.abc import MutableMapping
 from typing import Literal
 from ...ChallengeSolver import ChallengeSolver
 from .digitalocean_client import DigitalOcean
+from certapi.errors import CertApiException
 
 
 class DigitalOceanChallengeSolver(ChallengeSolver):
@@ -21,7 +22,13 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
         try:
             self.digitalocean.determine_domain(domain)
             return True
-        except Exception:
+        except CertApiException as e:
+            # Log the exception or handle it as needed, but return False as it doesn't support the domain
+            print(f"DigitalOceanChallengeSolver.supports_domain: {e.message} - {e.detail}")
+            return False
+        except Exception as e:
+            # Catch any other unexpected exceptions
+            print(f"DigitalOceanChallengeSolver.supports_domain: An unexpected error occurred: {e}")
             return False
 
     def save_challenge(self, key: str, value: str, domain=None):
@@ -31,7 +38,7 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
 
         record_id = self.digitalocean.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
-        print(f"DigitalOceanChallengeStore: Saved challenge for {key} with record ID {record_id}")
+        print(f"DigitalOceanChallengeSolver: Saved challenge for {key} with record ID {record_id}")
 
     def get_challenge(self, key: str, domain: str) -> str:
         base_domain = self.digitalocean.determine_domain(domain)
@@ -39,7 +46,7 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
         for record in records:
             if record["name"] == key:
                 return record["data"]  # DigitalOcean API returns 'data' for TXT record content
-        return None  # Return None if not found, as per ChallengeStore's __getitem__ behavior
+        return None  # Return None if not found, as per ChallengeSolver's __getitem__ behavior
 
     def delete_challenge(self, key: str, domain: str):
         if key not in self.challenges_map:
@@ -49,7 +56,27 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
         base_domain = self.digitalocean.determine_domain(domain)
         self.digitalocean.delete_record(record=record_id, domain=base_domain)
         del self.challenges_map[key]
-        print(f"DigitalOceanChallengeStore: Deleted challenge for {key} with record ID {record_id}")
+        print(f"DigitalOceanChallengeSolver: Deleted challenge for {key} with record ID {record_id}")
+
+    def cleanup_old_challenges(self):
+        domains = self.digitalocean._get_domains()
+        for domain_obj in domains:
+            domain_name = domain_obj["name"]
+            try:
+                records = self.digitalocean.list_records(domain_name)
+                for record in records:
+                    if record["type"] == "TXT" and record["name"].startswith("_acme-challenge"):
+                        print(f"DigitalOceanChallengeSolver: Deleting old challenge record {record['name']} in domain {domain_name}")
+                        try:
+                            self.digitalocean.delete_record(record["id"], domain_name)
+                        except CertApiException as e:
+                            print(f"DigitalOceanChallengeSolver: Warning - Failed to delete record {record['name']} in domain {domain_name}: {e.message} - {e.detail}")
+                        except Exception as e:
+                            print(f"DigitalOceanChallengeSolver: Warning - An unexpected error occurred while deleting record {record['name']} in domain {domain_name}: {e}")
+            except CertApiException as e:
+                print(f"DigitalOceanChallengeSolver: Error listing challenges in domain {domain_name}: {e.message} - {e.detail}")
+            except Exception as e:
+                print(f"DigitalOceanChallengeSolver: An unexpected error occurred while listing challenges in domain {domain_name}: {e}")
 
     def __iter__(self):
         # This is tricky as we can't easily iterate all challenges across all domains

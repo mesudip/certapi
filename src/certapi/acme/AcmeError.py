@@ -1,17 +1,12 @@
 import re
 import requests
+from certapi.errors import CertApiException
 
 
-class AcmeError(Exception):
+class AcmeError(CertApiException):
     def __init__(self, message, detail, step):
-        super().__init__(step, message)
-        self.message: str = message
-        self.step: str = step
-        self.detail: dict = detail
+        super().__init__(message, detail, step)
         self.can_retry = False
-
-    def json_obj(self) -> dict:
-        return {"message": self.message, "step": self.step, "detail": self.detail}
 
 
 class AcmeNetworkError(AcmeError, requests.RequestException):
@@ -23,7 +18,6 @@ class AcmeNetworkError(AcmeError, requests.RequestException):
         # Initialize both parent classes
         requests.RequestException.__init__(self, request=request)
         AcmeError.__init__(self, message, detail, step)
-        requests.RequestException.__init__(self, request=request)  # Pass message to RequestException
         self.can_retry = True
 
 

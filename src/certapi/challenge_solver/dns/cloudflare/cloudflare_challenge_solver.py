@@ -2,8 +2,10 @@ import os
 import time
 from collections.abc import MutableMapping
 from typing import Literal
+from concurrent.futures import ThreadPoolExecutor
 from ...ChallengeSolver import ChallengeSolver
 from .cloudflare_client import Cloudflare
+from certapi.errors import CertApiException
 
 
 class CloudflareChallengeSolver(ChallengeSolver):
@@ -22,7 +24,10 @@ class CloudflareChallengeSolver(ChallengeSolver):
         try:
             self.cloudflare.determine_registered_domain(domain)
             return True
-        except Exception:
+        except CertApiException as e:
+            # Log the exception or handle it as needed, but return False as it doesn't support the domain
+            print(f"CloudflareChallengeSolver.supports_domain: {e.message} - {e.detail}")
+            return False
             return False
 
     def save_challenge(self, key: str, value: str, domain=None):
@@ -32,7 +37,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
 
         record_id = self.cloudflare.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
-        print(f"CloudflareChallengeStore[{domain}]: Added Record {key}")
+        print(f"CloudflareChallengeSolver[{domain}]: Added Record {key}")
 
     def get_challenge(self, key: str, domain: str) -> str:
         base_domain = self.cloudflare.determine_registered_domain(domain)
@@ -40,17 +45,42 @@ class CloudflareChallengeSolver(ChallengeSolver):
         for record in records:
             if record["name"] == key:
                 return record["content"]
-        return None  # Return None if not found, as per ChallengeStore's __getitem__ behavior
+        return None  # Return None if not found, as per ChallengeSolver's __getitem__ behavior
 
     def delete_challenge(self, key: str, domain: str):
         if key not in self.challenges_map:
-            raise KeyError(f"Challenge {key} not found in store (no record_id stored).")
+            print(f"CloudflareChallengeSolver.delete: Not found Skipping  key={key}  record_id={record_id}")
+            return
 
         record_id = self.challenges_map[key]
         base_domain = self.cloudflare.determine_registered_domain(domain)
         self.cloudflare.delete_record(record=record_id, domain=base_domain)
         del self.challenges_map[key]
-        print(f"CloudflareChallengeStore: Deleted challenge for {key} with record ID {record_id}")
+        print(f"CloudflareChallengeSolver: Deleted challenge for {key} with record ID {record_id}")
+
+    def _cleanup_zone_challenges(self, zone):
+        zone_name = zone["name"]
+        try:
+            # List all TXT records in the zone
+            records = self.cloudflare.list_txt_records(zone_name)
+            for record in records:
+                if record["type"] == "TXT" and record["name"].startswith("_acme-challenge"):
+                    print(f"CloudflareChallengeSolver: Deleting old challenge record {record['name']} in zone {zone_name}")
+                    try:
+                        self.cloudflare.delete_record(record["id"], zone_name)
+                    except CertApiException as e:
+                        print(f"CloudflareChallengeSolver: Warning - Failed to delete record {record['name']} in zone {zone_name}: {e.message} - {e.detail}")
+                    except Exception as e:
+                        print(f"CloudflareChallengeSolver: Warning - An unexpected error occurred while deleting record {record['name']} in zone {zone_name}: {e}")
+        except CertApiException as e:
+            print(f"CloudflareChallengeSolver: Error listing challenges in zone {zone_name}: {e.message} - {e.detail}")
+        except Exception as e:
+            print(f"CloudflareChallengeSolver: An unexpected error occurred while listing challenges in zone {zone_name}: {e}")
+
+    def cleanup_old_challenges(self):
+        zones = self.cloudflare._get_zones()
+        with ThreadPoolExecutor(max_workers=len(zones)) as executor:
+            executor.map(self._cleanup_zone_challenges, zones)
 
     def __iter__(self):
         # This is tricky as we can't easily iterate all challenges across all domains

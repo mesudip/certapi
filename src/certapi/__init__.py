@@ -1,7 +1,7 @@
 from .acme.Acme import Acme, Order, AcmeNetworkError, AcmeHttpError, Challenge
 from .manager.acme_cert_manager import AcmeCertManager
 from .http.types import CertificateResponse, IssuedCert
-
+from .errors import CertApiException
 from .crypto import (
     Certificate,
     CertificateSigningRequest,
@@ -20,4 +20,4 @@ from .challenge_solver import (
     CloudflareChallengeSolver,
     DigitalOceanChallengeSolver,
 )
-from .issuers import SelfCertIssuer
+from .issuers import CertIssuer,SelfCertIssuer,AcmeCertIssuer
