@@ -6,29 +6,10 @@ from ...ChallengeSolver import ChallengeSolver
 from .digitalocean_client import DigitalOcean
 from certapi.errors import CertApiException, NetworkError
 
-MAX_RETRIES = 3
-RETRY_DELAY_SECONDS = 5
-
-
 class DigitalOceanChallengeSolver(ChallengeSolver):
     def __init__(self, api_key: str = None):
         self.digitalocean = DigitalOcean(api_key)
         self.challenges_map = {}  # Stores key: record_id (needed for deletion)
-
-    def _retry_api_call(self, func: Callable, *args, **kwargs) -> Any:
-        retries = 0
-        while retries <= MAX_RETRIES:
-            try:
-                return func(*args, **kwargs)
-            except CertApiException as e:
-                if e.can_retry and retries < MAX_RETRIES:
-                    print(f"DigitalOceanChallengeSolver: Retrying due to retryable error: {e.message}. Attempt {retries + 1}/{MAX_RETRIES}")
-                    time.sleep(RETRY_DELAY_SECONDS)
-                    retries += 1
-                else:
-                    raise
-                
-        raise CertApiException("Max retries exceeded for API call.", step=f"{func.__name__}")
 
     def supported_challenge_type(self) -> Literal["dns-01"]:
         return "dns-01"
@@ -39,7 +20,7 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
         as a registered zone.
         """
         try:
-            self._retry_api_call(self.digitalocean.determine_domain, domain)
+            self.digitalocean.determine_registered_domain(domain)
             return True
         except CertApiException as e:
             # Log the exception or handle it as needed, but return False as it doesn't support the domain
@@ -49,15 +30,15 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
     def save_challenge(self, key: str, value: str, domain=None):
         # key example: _acme-challenge.sub.example.com
         # value example: ACME_CHALLENGE_TOKEN
-        base_domain = self._retry_api_call(self.digitalocean.determine_domain, domain)
+        base_domain = self.digitalocean.determine_registered_domain(domain)
 
-        record_id = self._retry_api_call(self.digitalocean.create_record, name=key, data=value, domain=base_domain)
+        record_id = self.digitalocean.create_record(name=key, data=value, domain=base_domain)
         self.challenges_map[key] = record_id
         print(f"DigitalOceanChallengeSolver: Saved challenge for {key} with record ID {record_id}")
 
     def get_challenge(self, key: str, domain: str) -> str:
-        base_domain = self._retry_api_call(self.digitalocean.determine_domain, domain)
-        records = self._retry_api_call(self.digitalocean.list_records, base_domain, name_filter=key)
+        base_domain = self.digitalocean.determine_registered_domain(domain)
+        records = self.digitalocean.list_txt_records(base_domain, name_filter=key)
         for record in records:
             if record["name"] == key:
                 return record["data"]  # DigitalOcean API returns 'data' for TXT record content
@@ -68,22 +49,22 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
             raise KeyError(f"Challenge {key} not found in store (no record_id stored).")
 
         record_id = self.challenges_map[key]
-        base_domain = self._retry_api_call(self.digitalocean.determine_domain, domain)
-        self._retry_api_call(self.digitalocean.delete_record, record=record_id, domain=base_domain)
+        base_domain = self.digitalocean.determine_registered_domain(domain)
+        self.digitalocean.delete_record(record=record_id, domain=base_domain)
         del self.challenges_map[key]
         print(f"DigitalOceanChallengeSolver: Deleted challenge for {key} with record ID {record_id}")
 
     def cleanup_old_challenges(self):
-        domains = self._retry_api_call(self.digitalocean._get_domains)
+        domains = self.digitalocean._get_domains()
         for domain_obj in domains:
             domain_name = domain_obj["name"]
             try:
-                records = self._retry_api_call(self.digitalocean.list_records, domain_name)
+                records = self.digitalocean.list_txt_records(domain_name)
                 for record in records:
                     if record["type"] == "TXT" and record["name"].startswith("_acme-challenge"):
                         print(f"DigitalOceanChallengeSolver: Deleting old challenge record {record['name']} in domain {domain_name}")
                         try:
-                            self._retry_api_call(self.digitalocean.delete_record, record["id"], domain_name)
+                            self.digitalocean.delete_record(record["id"], domain_name)
                         except CertApiException as e:
                             print(f"DigitalOceanChallengeSolver: Warning - Failed to delete record {record['name']} in domain {domain_name}: {e.message} - {e.detail}")
                         except Exception as e:

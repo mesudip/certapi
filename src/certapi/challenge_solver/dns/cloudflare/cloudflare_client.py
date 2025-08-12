@@ -2,27 +2,24 @@ import json
 import time
 from os import getenv
 from certapi.errors import CertApiException, HttpError, DomainNotOwnedException
-from certapi.http import client as http_client
+from certapi.http.HttpClientBase import HttpClientBase
 from urllib.parse import urlencode
 from urllib.request import Request
 
 
-class Cloudflare(object):
+class Cloudflare(HttpClientBase):
     name = "cloudflare"
 
-    def __init__(self, api_key: str):
-        self.token = api_key
-        self.api = "https://api.cloudflare.com/client/v4"
-        if not self.token:
-            self.token = getenv("CLOUDFLARE_API_KEY")
-            if not self.token:
+    def __init__(self, api_key: str = None):
+        if not api_key:
+            api_key = getenv("CLOUDFLARE_API_KEY")
+            if not api_key:
                 raise CertApiException("CLOUDFLARE_API_KEY not found in environment", step="Cloudflare.__init__")
-
+        
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+        super().__init__("https://api.cloudflare.com/client/v4", headers, auto_retry=True)
         self._zones_cache = None
         self._zones_cache_time = 0  # Unix timestamp of last cache update
-
-    def _cloudflare_headers(self):
-        return {"Content-Type": "application/json", "Authorization": "Bearer " + self.token}
 
     def _get_zones(self):
         """Fetch and cache Cloudflare zones"""
@@ -30,9 +27,8 @@ class Cloudflare(object):
         if self._zones_cache and (time.time() - self._zones_cache_time) < 86400:
             return self._zones_cache
 
-        request_headers = self._cloudflare_headers()
-        api_url = "{0}/zones?per_page=50".format(self.api)
-        response = http_client.get(api_url, headers=request_headers, step="Cloudflare Get Zones")
+        api_url = f"{self.api_base_url}/zones?per_page=50"
+        response = self._get(api_url, step="Cloudflare Get Zones")
 
         zones = response.json()["result"]
         self._zones_cache = zones
@@ -62,7 +58,7 @@ class Cloudflare(object):
         This method encapsulates the logic of finding the correct zone for a given domain.
         """
         registered_domain = self.determine_registered_domain(domain)
-        zone_id = self._get_zone_id(registered_domain)
+        zone_id = self._get_zone_id_(registered_domain)
         return zone_id
 
     def determine_registered_domain(self, domain: str) -> str:
@@ -74,11 +70,8 @@ class Cloudflare(object):
         err = None
         for i in range(len(parts)):
             potential_domain = ".".join(parts[i:])
-            try:
-                self._get_zone_id(potential_domain)
+            if self._get_zone_id_(potential_domain) is not None:
                 return potential_domain
-            except DomainNotOwnedException as e:
-                continue
         
         raise DomainNotOwnedException(
                 "No Cloudflare zone found for "+domain,
@@ -96,10 +89,9 @@ class Cloudflare(object):
         if name_filter:
             params["name"] = name_filter
         
-        api_url = f"{self.api}/zones/{zone_id}/dns_records?{urlencode(params)}"
+        api_url = f"{self.api_base_url}/zones/{zone_id}/dns_records?{urlencode(params)}"
 
-        request_headers = self._cloudflare_headers()
-        response = http_client.get(api_url, headers=request_headers, step="Cloudflare List TXT Records")
+        response = self._get(api_url, step="Cloudflare List TXT Records")
 
         result = response.json()
         if not result.get("success"):
@@ -122,8 +114,7 @@ class Cloudflare(object):
             record_id, string, created record id
         """
         zone_id = self._determine_zone_id(domain)
-        api_url = "{0}/zones/{1}/dns_records".format(self.api, zone_id)
-        request_headers = self._cloudflare_headers()
+        api_url = "{0}/zones/{1}/dns_records".format(self.api_base_url, zone_id)
         request_data = {
             "type": "TXT",
             "name": name,
@@ -131,7 +122,7 @@ class Cloudflare(object):
             "ttl": 120,  # Cloudflare minimum TTL for TXT is 120 seconds
             "proxied": False,
         }
-        response = http_client.post(api_url, headers=request_headers, json=request_data, step="Cloudflare Create Record")
+        response = self._post(api_url, json_data=request_data, step="Cloudflare Create Record")
         result = response.json()
         return result["result"]["id"]
 
@@ -143,6 +134,5 @@ class Cloudflare(object):
             domain, string, dns domain - This will be used to determine the registered zone.
         """
         zone_id = self._determine_zone_id(domain)
-        api_url = "{0}/zones/{1}/dns_records/{2}".format(self.api, zone_id, record)
-        request_headers = self._cloudflare_headers()
-        http_client.delete(api_url, headers=request_headers, step="Cloudflare Delete Record")
+        api_url = "{0}/zones/{1}/dns_records/{2}".format(self.api_base_url, zone_id, record)
+        self._delete(api_url, step="Cloudflare Delete Record")

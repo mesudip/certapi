@@ -1,93 +1,61 @@
-import json
+import time
 from os import getenv
-from certapi.errors import CertApiException, HttpError, NetworkError, DomainNotOwnedException
-from certapi.http import client as http_client
-from urllib.request import Request
+from certapi.errors import CertApiException, DomainNotOwnedException
+from certapi.http.HttpClientBase import HttpClientBase
 
+class DigitalOcean(HttpClientBase):
+    name = "digitalocean"
 
-class DigitalOcean(object):
     def __init__(self, api_key: str = None):
-        self.token = api_key
-        self.api = "https://api.digitalocean.com/v2/domains"
-        if not self.token:
-            self.token = getenv("DIGITALOCEAN_API_KEY")
-            if not self.token:
+        if not api_key:
+            api_key = getenv("DIGITALOCEAN_API_KEY")
+            if not api_key:
                 raise CertApiException("DIGITALOCEAN_API_KEY not found in environment", step="DigitalOcean.__init__")
+        
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+        super().__init__("https://api.digitalocean.com/v2/domains", headers, auto_retry=True)
+        self._domains_cache = None
+        self._domains_cache_time = 0  # Unix timestamp of last cache update
 
     def _get_domains(self):
-        """Fetch DigitalOcean domains"""
-        request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        response = http_client.get(self.api, headers=request_headers, step="DigitalOcean Get Domains")
-        return response.json()["domains"]
+        """Fetch and cache DigitalOcean domains"""
+        # Cache for 1 day (86400 seconds)
+        if self._domains_cache and (time.time() - self._domains_cache_time) < 86400:
+            return self._domains_cache
 
-    def determine_domain(self, domain):
-        """Determine registered domain in API"""
+        response = self._get(self.api_base_url, step="DigitalOcean Get Domains")
+        domains = response.json()["domains"]
+        self._domains_cache = domains
+        self._domains_cache_time = time.time()
+        return domains
+
+    def determine_registered_domain(self, domain: str) -> str:
+        """
+        Determine the registered domain in DigitalOcean for a given (sub)domain.
+        This method iterates through parts of the domain to find a matching DigitalOcean domain.
+        """
         domains = self._get_domains()
-        for d in domains:
-            if d["name"] in domain:
-                return d["name"]
+        domain_parts = domain.split('.')
+        for i in range(len(domain_parts)):
+            sub_domain = '.'.join(domain_parts[i:])
+            for d in domains:
+                if d['name'] == sub_domain:
+                    return sub_domain
         raise DomainNotOwnedException(
-            "No DigitalOcean domain found for: {0}".format(domain),
+            "No DigitalOcean domain found for " + domain,
             detail={"domain": domain},
             step="DigitalOcean Determine Domain"
         )
 
-    def create_record(self, name, data, domain):
+    def list_txt_records(self, domain: str, name_filter: str = None) -> list:
         """
-        Create DNS record
-        Params:
-            name, string, record name
-            data, string, record data
-            domain, string, dns domain
-        Return:
-            record_id, int, created record id
+        Lists TXT records for a given domain, optionally filtered by name.
+        Returns a list of dictionaries, each representing a TXT record.
         """
-        registered_domain = self.determine_domain(domain)
-        api = self.api + "/" + registered_domain + "/records"
-        request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        request_data = {"type": "TXT", "ttl": 300, "name": name, "data": data}
-        response = http_client.post(api, headers=request_headers, json=request_data, step="DigitalOcean Create Record")
-        if response.status_code != 201:
-            raise HttpError(
-                response=response,
-                message="DigitalOcean API error",
-                detail=response.json(),
-                step="DigitalOcean Create Record"
-            )
-        return response.json()["domain_record"]["id"]
-
-    def delete_record(self, record, domain):
-        """
-        Delete DNS record
-        Params:
-            record, int, record id number
-            domain, string, dns domain
-        """
-        registered_domain = self.determine_domain(domain)
-        api = self.api + "/" + registered_domain + "/records/" + str(record)
-        request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        response = http_client.delete(api, headers=request_headers, step="DigitalOcean Delete Record")
-        if response.status_code != 204:
-            raise HttpError(
-                response=response,
-                message="DigitalOcean API error",
-                detail=response.json(),
-                step="DigitalOcean Delete Record"
-            )
-
-    def list_records(self, domain, name_filter=None):
-        """
-        List DNS records for a domain, optionally filtered by name.
-        Params:
-            domain, string, dns domain
-            name_filter, string, optional filter for record name
-        Return:
-            records, list of dicts, matching DNS records
-        """
-        registered_domain = self.determine_domain(domain)
-        api = self.api + "/" + registered_domain + "/records"
-        request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        response = http_client.get(api, headers=request_headers, step="DigitalOcean List Records")
+        registered_domain = self.determine_registered_domain(domain)
+        api_url = f"{self.api_base_url}/{registered_domain}/records"
+        
+        response = self._get(api_url, step="DigitalOcean List TXT Records")
 
         all_records = response.json()["domain_records"]
 
@@ -97,3 +65,26 @@ class DigitalOcean(object):
             filtered_records = [r for r in all_records if r["type"] == "TXT"]
 
         return filtered_records
+
+    def create_record(self, name, data, domain):
+        """
+        Create DNS record
+        """
+        registered_domain = self.determine_registered_domain(domain)
+        api_url = f"{self.api_base_url}/{registered_domain}/records"
+        request_data = {
+            "type": "TXT",
+            "name": name,
+            "data": data,
+            "ttl": 300,
+        }
+        response = self._post(api_url, json_data=request_data, step="DigitalOcean Create Record")
+        return response.json()["domain_record"]["id"]
+
+    def delete_record(self, record, domain):
+        """
+        Delete DNS record
+        """
+        registered_domain = self.determine_registered_domain(domain)
+        api_url = f"{self.api_base_url}/{registered_domain}/records/{record}"
+        self._delete(api_url, step="DigitalOcean Delete Record")
