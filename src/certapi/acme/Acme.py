@@ -40,6 +40,34 @@ class Acme:
         if self.directory is None:
             self.directory = get("Fetch Acme Directory", self.acme_url).json()
 
+
+    def register(self):
+        """
+         Register an ACME Account. Re-registering is idempotent.
+        """
+        response = self._directory_req("newAccount", {"termsOfServiceAgreed": True})
+        if "location" in response.headers:
+            self.key_id = response.headers["location"]
+        return response
+
+    def create_order(self, domains: List[str]) -> "Order":
+        """
+        Makes newOrder request, fetches all challenge details, and returns an Order object.
+        You cann then Use functions in Order and Challenge
+        """
+        payload = {"identifiers": [{"type": "dns", "value": d} for d in domains]}
+        res = self._directory_req("newOrder", payload)
+        res_json = res.json()
+        challenges = []
+        identifiers= res_json["identifiers"]
+        
+        # auth_url means the url for challenge. In case of ACME challenge and authorization means same.
+        for (auth_url,identifier) in zip(res_json["authorizations"],identifiers):
+            auth_res = get(f"Get Challenge [{identifier['value']}]",auth_url)
+            challenges.append(Challenge(auth_url, auth_res.json(), self))
+        return Order(res.headers["location"], res_json, challenges, self)
+    
+
     def _directory(self, key):
         if not self.directory:
             self.directory = get("Fetch Acme Directory", self.acme_url).json()
@@ -100,28 +128,3 @@ class Acme:
                 raise e
 
         return self.record_nonce(response)
-
-    def register(self):
-        response = self._directory_req("newAccount", {"termsOfServiceAgreed": True})
-        if "location" in response.headers:
-            self.key_id = response.headers["location"]
-        return response
-
-    def create_authorized_order(self, domains: List[str]) -> "Order":
-        payload = {"identifiers": [{"type": "dns", "value": d} for d in domains]}
-        res = self._directory_req("newOrder", payload)
-        res_json = res.json()
-        challenges = []
-        for auth_url in res_json["authorizations"]:
-            auth_res = self._signed_req(auth_url, None, step="Authorize Created Order")
-            challenges.append(Challenge(auth_url, auth_res.json(), self))
-        return Order(res.headers["location"], res_json, challenges, self)
-
-    def authorize_order(self, auth_url):
-        return self._signed_req(auth_url, None, step="Authorize Created Order")
-
-    def verify_challenge(self, challenge_url):
-        return self._signed_req(challenge_url, {}, step="Verify Challenge")
-
-    def finalize_order(self):
-        pass
