@@ -1,7 +1,8 @@
 import json
 from os import getenv
-from urllib.request import urlopen, Request
-from certapi.errors import CertApiException
+from certapi.errors import CertApiException, HttpError, NetworkError, DomainNotOwnedException
+from certapi.http import client as http_client
+from urllib.request import Request
 
 
 class DigitalOcean(object):
@@ -16,14 +17,8 @@ class DigitalOcean(object):
     def _get_domains(self):
         """Fetch DigitalOcean domains"""
         request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        response = urlopen(Request(self.api, headers=request_headers))
-        if response.getcode() != 200:
-            raise CertApiException(
-                "DigitalOcean API error",
-                detail=json.loads(response.read().decode("utf8")),
-                step="DigitalOcean._get_domains"
-            )
-        return json.loads(response.read().decode("utf8"))["domains"]
+        response = http_client.get(self.api, headers=request_headers, step="DigitalOcean Get Domains")
+        return response.json()["domains"]
 
     def determine_domain(self, domain):
         """Determine registered domain in API"""
@@ -31,10 +26,10 @@ class DigitalOcean(object):
         for d in domains:
             if d["name"] in domain:
                 return d["name"]
-        raise CertApiException(
+        raise DomainNotOwnedException(
             "No DigitalOcean domain found for: {0}".format(domain),
             detail={"domain": domain},
-            step="DigitalOcean.determine_domain"
+            step="DigitalOcean Determine Domain"
         )
 
     def create_record(self, name, data, domain):
@@ -51,14 +46,15 @@ class DigitalOcean(object):
         api = self.api + "/" + registered_domain + "/records"
         request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
         request_data = {"type": "TXT", "ttl": 300, "name": name, "data": data}
-        response = urlopen(Request(api, data=json.dumps(request_data).encode("utf8"), headers=request_headers))
-        if response.getcode() != 201:
-            raise CertApiException(
-                "DigitalOcean API error",
-                detail=json.loads(response.read().decode("utf8")),
-                step="DigitalOcean.create_record"
+        response = http_client.post(api, headers=request_headers, json=request_data, step="DigitalOcean Create Record")
+        if response.status_code != 201:
+            raise HttpError(
+                response=response,
+                message="DigitalOcean API error",
+                detail=response.json(),
+                step="DigitalOcean Create Record"
             )
-        return json.loads(response.read().decode("utf8"))["domain_record"]["id"]
+        return response.json()["domain_record"]["id"]
 
     def delete_record(self, record, domain):
         """
@@ -70,14 +66,13 @@ class DigitalOcean(object):
         registered_domain = self.determine_domain(domain)
         api = self.api + "/" + registered_domain + "/records/" + str(record)
         request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        request = Request(api, data=json.dumps({}).encode("utf8"), headers=request_headers)
-        request.get_method = lambda: "DELETE"
-        response = urlopen(request)
-        if response.getcode() != 204:
-            raise CertApiException(
-                "DigitalOcean API error",
-                detail=json.loads(response.read().decode("utf8")),
-                step="DigitalOcean.delete_record"
+        response = http_client.delete(api, headers=request_headers, step="DigitalOcean Delete Record")
+        if response.status_code != 204:
+            raise HttpError(
+                response=response,
+                message="DigitalOcean API error",
+                detail=response.json(),
+                step="DigitalOcean Delete Record"
             )
 
     def list_records(self, domain, name_filter=None):
@@ -92,15 +87,9 @@ class DigitalOcean(object):
         registered_domain = self.determine_domain(domain)
         api = self.api + "/" + registered_domain + "/records"
         request_headers = {"Content-Type": "application/json", "Authorization": "Bearer {0}".format(self.token)}
-        response = urlopen(Request(api, headers=request_headers))
-        if response.getcode() != 200:
-            raise CertApiException(
-                "DigitalOcean API error",
-                detail=json.loads(response.read().decode("utf8")),
-                step="DigitalOcean.list_records"
-            )
+        response = http_client.get(api, headers=request_headers, step="DigitalOcean List Records")
 
-        all_records = json.loads(response.read().decode("utf8"))["domain_records"]
+        all_records = response.json()["domain_records"]
 
         if name_filter:
             filtered_records = [r for r in all_records if r["name"] == name_filter and r["type"] == "TXT"]

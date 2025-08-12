@@ -7,15 +7,6 @@ def request(method, step: str, url: str, json=None, headers=None, throw=True) ->
     try:
         res = requests.request(method, url, json=json, headers=headers, timeout=15)
         print("Request [" + str(res.status_code) + "] : " + method + " " + url + " step=" + step)
-    except requests.HTTPError as e:
-        status = res.status_code if res else None
-        status = status if status else (e.response.status_code if e.response else None)
-        if status:
-            print("Request [" + str(status) + "] : " + method + " " + url + " step=" + step)
-        else:
-            print("Request : " + method + " " + url + " step=" + step)
-
-        raise e
     except requests.RequestException as e:
         print("Request : " + str(method) + " " + str(url) + " step=" + str(step))
         raise AcmeNetworkError(
@@ -51,5 +42,5 @@ def post(step: str, url: str, json=None, headers=None, throw=True) -> requests.R
     return request("POST", step, url, json=json, headers=headers, throw=throw)
 
 
-def get(step: str, url) -> requests.Response:
-    return request("GET", step, url)
+def get(step: str, url,headers=None,throw=True) -> requests.Response:
+    return request("GET", step, url,headers=headers,throw=throw)
