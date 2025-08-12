@@ -39,11 +39,11 @@ class AcmeCertIssuer(CertIssuer):
 
         challenges = order.remaining_challenges()
 
-        saved_challenges=[]
+        saved_challenges = []
         for c in challenges:
             key, value = c.as_key_value(type=challenge_solver.supported_challenge_type())
             challenge_solver.save_challenge(key, value, c.domain)
-            saved_challenges.append((key,c.domain))
+            saved_challenges.append((key, c.domain))
         for c in challenges:
             if self.self_verify_challenge:
                 c.self_verify()
@@ -54,7 +54,7 @@ class AcmeCertIssuer(CertIssuer):
         counter = 1
 
         # acme can use our key and immediately allow certificate registration if we have recently proved domain ownership.
-        if len(challenges) > 0  and challenge_solver.supported_challenge_type() == "dns-01":
+        if len(challenges) > 0 and challenge_solver.supported_challenge_type() == "dns-01":
             print("Waiting 10 seconds for DNS propagation .. ")
             time.sleep(10)  # sleep 7 seconds for dns propagation
 
@@ -78,15 +78,15 @@ class AcmeCertIssuer(CertIssuer):
             order.refresh()  # is this refresh necessary?
 
             if order.status == "valid" or count == 0:
-                for (key,domain) in saved_challenges:
-                    challenge_solver.delete_challenge(key,domain)
+                for key, domain in saved_challenges:
+                    challenge_solver.delete_challenge(key, domain)
                 if order.status == "valid":
                     return order.get_certificate()
                 return None
             elif order.status == "processing":
                 return obtain_cert()
-            return None # TODO: error throwing here
-        
+            return None  # TODO: error throwing here
+
         return obtain_cert()
 
     def generate_key_and_cert_for_domains(

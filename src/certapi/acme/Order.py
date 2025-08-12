@@ -31,9 +31,7 @@ class Order:
         elif self.status != "valid":
             raise ValueError("Order not in 'valid' state! Complete challenge and call finalize()")
 
-        certificate_res = self._acme._signed_req(
-            self._data["certificate"], step="Download Certificate"
-        )
+        certificate_res = self._acme._signed_req(self._data["certificate"], step="Download Certificate")
         return certificate_res.text
 
     def finalize(self, csr: CertificateSigningRequest):

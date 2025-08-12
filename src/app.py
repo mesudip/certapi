@@ -13,7 +13,7 @@ from certapi.acme.Acme import AcmeError, AcmeHttpError, AcmeNetworkError
 from certapi.utils import print_filtered_traceback
 from certapi.challenge_solver import ChallengeSolver, FilesystemChallengeSolver
 from certapi.challenge_solver.dns.cloudflare.cloudflare_challenge_solver import CloudflareChallengeSolver
-from certapi.keystore import KeyStore, FileSystemKeystore
+from certapi.keystore import KeyStore, FileSystemKeyStore
 from certapi.issuers import AcmeCertIssuer, SelfCertIssuer
 from certapi.manager.acme_cert_manager import AcmeCertManager
 
@@ -31,7 +31,7 @@ api = Api(
     doc="/swagger-ui",
 )
 
-key_store: KeyStore = FileSystemKeystore("db")
+key_store: KeyStore = FileSystemKeyStore("db")
 
 challenge_solvers: List[ChallengeSolver] = []
 

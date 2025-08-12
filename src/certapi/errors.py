@@ -5,6 +5,7 @@ class CertApiException(Exception):
     """
     Base exception for all CertAPI related errors.
     """
+
     def __init__(self, message: str, detail: dict = None, step: str = None):
         super().__init__(message)
         self.message = message
@@ -13,11 +14,7 @@ class CertApiException(Exception):
         self.can_retry = False
 
     def json_obj(self) -> dict:
-        return {
-            "message": self.message,
-            "step": self.step,
-            "detail": self.detail
-        }
+        return {"name": self.__class__.__name__, "message": self.message, "step": self.step, "detail": self.detail}
 
 
 class NetworkError(CertApiException, requests.RequestException):
@@ -46,6 +43,7 @@ class DomainNotOwnedException(CertApiException):
     """
     The specified domain is not owned or managed by the configured account.
     """
+
     def __init__(self, message: str, detail: dict = None, step: str = None):
         super().__init__(message, detail, step)
         self.can_retry = False

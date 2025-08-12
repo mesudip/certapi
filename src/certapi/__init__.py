@@ -12,7 +12,7 @@ from .crypto import (
     Ed25519PrivateKey,
     EllipticCurvePrivateKey,
 )
-from .keystore import FileSystemKeystore, SqliteKeyStore, PostgresKeyStore, KeyStore
+from .keystore import FileSystemKeyStore, SqliteKeyStore, PostgresKeyStore, KeyStore
 from .challenge_solver import (
     ChallengeSolver,
     InMemoryChallengeSolver,
@@ -20,4 +20,4 @@ from .challenge_solver import (
     CloudflareChallengeSolver,
     DigitalOceanChallengeSolver,
 )
-from .issuers import CertIssuer,SelfCertIssuer,AcmeCertIssuer
+from .issuers import CertIssuer, SelfCertIssuer, AcmeCertIssuer

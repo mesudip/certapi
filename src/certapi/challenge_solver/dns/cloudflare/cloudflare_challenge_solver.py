@@ -6,6 +6,7 @@ from ...ChallengeSolver import ChallengeSolver
 from .cloudflare_client import Cloudflare
 from certapi.errors import CertApiException, DomainNotOwnedException, NetworkError
 
+
 class CloudflareChallengeSolver(ChallengeSolver):
     def __init__(self, api_key: str = None):
         self.cloudflare = Cloudflare(api_key)
@@ -28,7 +29,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
     def save_challenge(self, key: str, value: str, domain=None):
 
         if domain is None:
-            domain = key.replace('_acme-challenge.','')
+            domain = key.replace("_acme-challenge.", "")
 
         record_id = self.cloudflare.create_record(name=key, data=value, domain=domain)
         self.challenges_map[key] = record_id
@@ -36,7 +37,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
 
     def get_challenge(self, key: str, domain: str) -> str:
         if domain is None:
-            domain = key.replace('_acme-challenge.','')
+            domain = key.replace("_acme-challenge.", "")
         records = self.cloudflare.list_txt_records(domain, name_filter=key)
         for record in records:
             if record["name"] == key:
@@ -48,7 +49,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
             print(f"CloudflareChallengeSolver.delete: Not found Skipping  key={key}  domain={domain}")
             return
         if domain is None:
-            domain = key.replace('_acme-challenge.','')
+            domain = key.replace("_acme-challenge.", "")
 
         record_id = self.challenges_map[key]
         self.cloudflare.delete_record(record=record_id, domain=domain)
@@ -66,13 +67,19 @@ class CloudflareChallengeSolver(ChallengeSolver):
                     try:
                         self.cloudflare.delete_record(record["id"], zone_name)
                     except CertApiException as e:
-                        print(f"CloudflareChallengeSolver: Warning - Failed to delete record {record['name']} in zone {zone_name}: {e.message} - {e.detail}")
+                        print(
+                            f"CloudflareChallengeSolver: Warning - Failed to delete record {record['name']} in zone {zone_name}: {e.message} - {e.detail}"
+                        )
                     except Exception as e:
-                        print(f"CloudflareChallengeSolver: Warning - An unexpected error occurred while deleting record {record['name']} in zone {zone_name}: {e}")
+                        print(
+                            f"CloudflareChallengeSolver: Warning - An unexpected error occurred while deleting record {record['name']} in zone {zone_name}: {e}"
+                        )
         except CertApiException as e:
             print(f"CloudflareChallengeSolver: Error listing challenges in zone {zone_name}: {e.message} - {e.detail}")
         except Exception as e:
-            print(f"CloudflareChallengeSolver: An unexpected error occurred while listing challenges in zone {zone_name}: {e}")
+            print(
+                f"CloudflareChallengeSolver: An unexpected error occurred while listing challenges in zone {zone_name}: {e}"
+            )
 
     def cleanup_old_challenges(self):
         zones = self.cloudflare._get_zones()

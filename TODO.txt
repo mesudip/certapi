@@ -1,3 +1,6 @@
+## Add a way to prule all txt records/challenges on startup in challenge_stores.
+ - [x] This is important
+ 
 ## Fix the ssl warning in nginx
 Chatgpt says that when obtaining cert, there is alternate link that contains the fullchain certificate.
 Link: <https://acme-v02.api.letsencrypt.org/acme/cert/XYZ>;rel="alternate"

@@ -6,6 +6,7 @@ from ...ChallengeSolver import ChallengeSolver
 from .digitalocean_client import DigitalOcean
 from certapi.errors import CertApiException, NetworkError
 
+
 class DigitalOceanChallengeSolver(ChallengeSolver):
     def __init__(self, api_key: str = None):
         self.digitalocean = DigitalOcean(api_key)
@@ -62,17 +63,27 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
                 records = self.digitalocean.list_txt_records(domain_name)
                 for record in records:
                     if record["type"] == "TXT" and record["name"].startswith("_acme-challenge"):
-                        print(f"DigitalOceanChallengeSolver: Deleting old challenge record {record['name']} in domain {domain_name}")
+                        print(
+                            f"DigitalOceanChallengeSolver: Deleting old challenge record {record['name']} in domain {domain_name}"
+                        )
                         try:
                             self.digitalocean.delete_record(record["id"], domain_name)
                         except CertApiException as e:
-                            print(f"DigitalOceanChallengeSolver: Warning - Failed to delete record {record['name']} in domain {domain_name}: {e.message} - {e.detail}")
+                            print(
+                                f"DigitalOceanChallengeSolver: Warning - Failed to delete record {record['name']} in domain {domain_name}: {e.message} - {e.detail}"
+                            )
                         except Exception as e:
-                            print(f"DigitalOceanChallengeSolver: Warning - An unexpected error occurred while deleting record {record['name']} in domain {domain_name}: {e}")
+                            print(
+                                f"DigitalOceanChallengeSolver: Warning - An unexpected error occurred while deleting record {record['name']} in domain {domain_name}: {e}"
+                            )
             except CertApiException as e:
-                print(f"DigitalOceanChallengeSolver: Error listing challenges in domain {domain_name}: {e.message} - {e.detail}")
+                print(
+                    f"DigitalOceanChallengeSolver: Error listing challenges in domain {domain_name}: {e.message} - {e.detail}"
+                )
             except Exception as e:
-                print(f"DigitalOceanChallengeSolver: An unexpected error occurred while listing challenges in domain {domain_name}: {e}")
+                print(
+                    f"DigitalOceanChallengeSolver: An unexpected error occurred while listing challenges in domain {domain_name}: {e}"
+                )
 
     def __iter__(self):
         # This is tricky as we can't easily iterate all challenges across all domains

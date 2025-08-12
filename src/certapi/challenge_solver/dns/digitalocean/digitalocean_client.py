@@ -3,6 +3,7 @@ from os import getenv
 from certapi.errors import CertApiException, DomainNotOwnedException
 from certapi.http.HttpClientBase import HttpClientBase
 
+
 class DigitalOcean(HttpClientBase):
     name = "digitalocean"
 
@@ -11,7 +12,7 @@ class DigitalOcean(HttpClientBase):
             api_key = getenv("DIGITALOCEAN_API_KEY")
             if not api_key:
                 raise CertApiException("DIGITALOCEAN_API_KEY not found in environment", step="DigitalOcean.__init__")
-        
+
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
         super().__init__("https://api.digitalocean.com/v2/domains", headers, auto_retry=True)
         self._domains_cache = None
@@ -35,16 +36,16 @@ class DigitalOcean(HttpClientBase):
         This method iterates through parts of the domain to find a matching DigitalOcean domain.
         """
         domains = self._get_domains()
-        domain_parts = domain.split('.')
+        domain_parts = domain.split(".")
         for i in range(len(domain_parts)):
-            sub_domain = '.'.join(domain_parts[i:])
+            sub_domain = ".".join(domain_parts[i:])
             for d in domains:
-                if d['name'] == sub_domain:
+                if d["name"] == sub_domain:
                     return sub_domain
         raise DomainNotOwnedException(
             "No DigitalOcean domain found for " + domain,
             detail={"domain": domain},
-            step="DigitalOcean Determine Domain"
+            step="DigitalOcean Determine Domain",
         )
 
     def list_txt_records(self, domain: str, name_filter: str = None) -> list:
@@ -54,7 +55,7 @@ class DigitalOcean(HttpClientBase):
         """
         registered_domain = self.determine_registered_domain(domain)
         api_url = f"{self.api_base_url}/{registered_domain}/records"
-        
+
         response = self._get(api_url, step="DigitalOcean List TXT Records")
 
         all_records = response.json()["domain_records"]

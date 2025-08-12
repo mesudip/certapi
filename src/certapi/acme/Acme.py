@@ -40,10 +40,9 @@ class Acme:
         if self.directory is None:
             self.directory = get("Fetch Acme Directory", self.acme_url).json()
 
-
     def register(self):
         """
-         Register an ACME Account. Re-registering is idempotent.
+        Register an ACME Account. Re-registering is idempotent.
         """
         response = self._directory_req("newAccount", {"termsOfServiceAgreed": True})
         if "location" in response.headers:
@@ -59,14 +58,13 @@ class Acme:
         res = self._directory_req("newOrder", payload)
         res_json = res.json()
         challenges = []
-        identifiers= res_json["identifiers"]
-        
+        identifiers = res_json["identifiers"]
+
         # auth_url means the url for challenge. In case of ACME challenge and authorization means same.
-        for (auth_url,identifier) in zip(res_json["authorizations"],identifiers):
-            auth_res = get(f"Get Challenge [{identifier['value']}]",auth_url)
+        for auth_url, identifier in zip(res_json["authorizations"], identifiers):
+            auth_res = get(f"Get Challenge [{identifier['value']}]", auth_url)
             challenges.append(Challenge(auth_url, auth_res.json(), self))
         return Order(res.headers["location"], res_json, challenges, self)
-    
 
     def _directory(self, key):
         if not self.directory:

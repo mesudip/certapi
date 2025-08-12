@@ -15,7 +15,7 @@ class Cloudflare(HttpClientBase):
             api_key = getenv("CLOUDFLARE_API_KEY")
             if not api_key:
                 raise CertApiException("CLOUDFLARE_API_KEY not found in environment", step="Cloudflare.__init__")
-        
+
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
         super().__init__("https://api.cloudflare.com/client/v4", headers, auto_retry=True)
         self._zones_cache = None
@@ -44,12 +44,10 @@ class Cloudflare(HttpClientBase):
 
     def _get_zone_id(self, domain):
         """Determine Cloudflare Zone ID for a given domain"""
-        zone_id=self._get_zone_id_(domain)
+        zone_id = self._get_zone_id_(domain)
         if zone_id is None:
             raise DomainNotOwnedException(
-                "No Cloudflare zone found for domain",
-                detail={"domain": domain},
-                step="Cloudflare Get Zone ID"
+                "No Cloudflare zone found for domain", detail={"domain": domain}, step="Cloudflare Get Zone ID"
             )
 
     def _determine_zone_id(self, domain: str) -> str:
@@ -72,12 +70,10 @@ class Cloudflare(HttpClientBase):
             potential_domain = ".".join(parts[i:])
             if self._get_zone_id_(potential_domain) is not None:
                 return potential_domain
-        
+
         raise DomainNotOwnedException(
-                "No Cloudflare zone found for "+domain,
-                detail={"domain": domain},
-                step="Cloudflare Get Zone ID"
-            )
+            "No Cloudflare zone found for " + domain, detail={"domain": domain}, step="Cloudflare Get Zone ID"
+        )
 
     def list_txt_records(self, domain: str, name_filter: str = None) -> list:
         """
@@ -88,7 +84,7 @@ class Cloudflare(HttpClientBase):
         params = {"type": "TXT"}
         if name_filter:
             params["name"] = name_filter
-        
+
         api_url = f"{self.api_base_url}/zones/{zone_id}/dns_records?{urlencode(params)}"
 
         response = self._get(api_url, step="Cloudflare List TXT Records")
@@ -98,7 +94,7 @@ class Cloudflare(HttpClientBase):
             raise CertApiException(
                 "Unknown error listing TXT records",
                 detail=result.get("errors", "Unknown error listing TXT records"),
-                step="Cloudflare List TXT Records"
+                step="Cloudflare List TXT Records",
             )
 
         return result["result"]

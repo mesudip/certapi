@@ -22,10 +22,9 @@ class AcmeCertManager:
         self.key_store: KeyStore = key_store
         self.cert_issuer: AcmeCertIssuer = cert_issuer
         self.challenge_solvers: List[ChallengeSolver] = challenge_solvers
-       
 
     def setup(self):
-        names=[ solver.__class__.__name__.replace("ChallengeSolver","") for solver in self.challenge_solvers]
+        names = [solver.__class__.__name__.replace("ChallengeSolver", "") for solver in self.challenge_solvers]
         print(f"AcmeCertManager started with  challenge_solvers: {names}")
         self.cert_issuer.setup()
 

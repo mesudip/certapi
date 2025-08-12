@@ -42,5 +42,5 @@ def post(step: str, url: str, json=None, headers=None, throw=True) -> requests.R
     return request("POST", step, url, json=json, headers=headers, throw=throw)
 
 
-def get(step: str, url,headers=None,throw=True) -> requests.Response:
-    return request("GET", step, url,headers=headers,throw=throw)
+def get(step: str, url, headers=None, throw=True) -> requests.Response:
+    return request("GET", step, url, headers=headers, throw=throw)
