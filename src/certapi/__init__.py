@@ -1,4 +1,4 @@
-from .acme.Acme import Acme, Order, AcmeNetworkError, AcmeHttpError, Challenge
+from .acme.Acme import Acme, Order, AcmeNetworkError, AcmeHttpError,AcmeError, Challenge
 from .manager.acme_cert_manager import AcmeCertManager
 from .http.types import CertificateResponse, IssuedCert
 from .errors import CertApiException

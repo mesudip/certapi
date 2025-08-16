@@ -13,27 +13,21 @@ You can install CertApi using pip
 pip install certapi
 ```
 
-## Use Low level API
+## Example: Obtain Certificate with Cloudflare
 
 ```python
 import json
-import os
-from certapi import FileSystemKeyStore, CertApiException, CloudflareChallengeSolver, AcmeCertManager, AcmeCertIssuer
+from certapi import CertApiException, CloudflareChallengeSolver, Key, AcmeCertIssuer
 
-
-# Initialize the key store and create acme account key
-key_store = FileSystemKeyStore("data")
-
-acme_key = key_store._get_or_generate_key("acme_account", "rsa")[0]
 
 # Initialize the Cloudflare challenge solver
 # The API key is read from the CLOUDFLARE_API_KEY environment variable, or you can set it below.
 challenge_solver = CloudflareChallengeSolver(api_key=None)
 
-## initialize cert issuer
-cert_issuer = AcmeCertIssuer(acme_key, challenge_solver)
+## initialize cert issuer with a new account key
+cert_issuer = AcmeCertIssuer(Key.generate('rsa'), challenge_solver)
 
-# Setup ACME account.
+# Preform setup i.e. fetching directory and registering ACME account
 cert_issuer.setup()
 
 try:
@@ -47,4 +41,10 @@ try:
 except CertApiException as e:
     print(f"An error occurred:", json.dumps(e.json_obj(), indent=2))
 
+```
+
+
+## Example: Use High Leve API
+
+```
 ```

@@ -33,7 +33,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
 
         record_id = self.cloudflare.create_record(name=key, data=value, domain=domain)
         self.challenges_map[key] = record_id
-        print(f"CloudflareChallengeSolver[{domain}]: Added Record {key}")
+        print(f"CloudflareChallengeSolver [ {domain} ]: Added Record {key}")
 
     def get_challenge(self, key: str, domain: str) -> str:
         if domain is None:
