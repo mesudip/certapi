@@ -29,7 +29,6 @@ class Acme:
         # json web key format for public key
         self.jwk = account_key.jwk()
         self.alg_name = account_key.algorithm_name()
-        print(self.jwk)
         self.nonce = []
         self.acme_url = url if url else os.environ.get("ACME_API_URL", self.URL_STAGING)
         self.key_id = None
