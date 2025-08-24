@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="certapi",
-    version="0.4.6",
+    version="0.4.8",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
