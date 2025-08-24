@@ -93,9 +93,9 @@ class Acme:
         return response
 
     def _signed_req(
-        self, url, payload: Union[str, dict, list, bytes, None] = None, depth=0, step="Acme Request", throw=True
+        self, url, req_payload: Union[str, dict, list, bytes, None] = None, depth=0, step="Acme Request", throw=True
     ) -> requests.Response:
-        payload64 = b64_encode(payload) if payload is not None else b""
+        payload64 = b64_encode(req_payload) if req_payload is not None else b""
 
         protected = {
             "url": url,
@@ -118,9 +118,9 @@ class Acme:
 
             response = post(step, url, json=payload, headers={"Content-Type": "application/jose+json"}, throw=throw)
         except AcmeError as e:
-            if e.can_retry and depth <= 0:
+            if e.can_retry and depth <= 1:
                 time.sleep(2)
-                return self._signed_req(url, payload, depth + 1, step, throw)
+                return self._signed_req(url, req_payload, depth + 1, step, throw)
             else:
                 raise e
 
