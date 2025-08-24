@@ -1,5 +1,6 @@
 import requests
 from .AcmeError import *
+import json as j
 
 
 def request(method, step: str, url: str, json=None, headers=None, throw=True) -> requests.Response:
@@ -21,6 +22,8 @@ def request(method, step: str, url: str, json=None, headers=None, throw=True) ->
             step,
         )
     if 199 <= res.status_code > 299:
+        if(json):
+            print("Request:",j.dumps(json))
         [print(x, y) for (x, y) in res.headers.items()]
         print("Response:", res.text)
         json_data = None
