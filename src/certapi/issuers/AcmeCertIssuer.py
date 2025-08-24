@@ -55,11 +55,12 @@ class AcmeCertIssuer(CertIssuer):
 
         # acme can use our key and immediately allow certificate registration if we have recently proved domain ownership.
         if len(challenges) > 0 and challenge_solver.supported_challenge_type() == "dns-01":
-            print("Waiting 10 seconds for DNS propagation .. ")
-            time.sleep(10)  # sleep 7 seconds for dns propagation
+            print("Waiting 20 seconds for DNS propagation .. ")
+            time.sleep(20)  # sleep 20 seconds for dns propagation
 
         for c in challenges:
             c.verify(challenge_solver.supported_challenge_type())
+
         while len(remaining_now) > 0:
             if time.time() > end and counter > 4:
                 print("Order finalization time out")
