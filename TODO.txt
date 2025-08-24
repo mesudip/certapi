@@ -5,9 +5,11 @@
 Chatgpt says that when obtaining cert, there is alternate link that contains the fullchain certificate.
 Link: <https://acme-v02.api.letsencrypt.org/acme/cert/XYZ>;rel="alternate"
 - [x] The response already had fullchain cert, it was issue on the keystore part
+- [ ] But still the warning is error log for missing OSP signature  related to sll_stapling.
 
 
 ## Did not request certificate
+- [x] This appears to be case only when bad nonce error occurs. Retry logic is failed to include correct payload
 Valid configuration   	Id:4329b56b0bba	    nginx-external_configs-1
 -   wss://photos.bhattarai.me:80/
       ->  http://172.31.7.3:2283

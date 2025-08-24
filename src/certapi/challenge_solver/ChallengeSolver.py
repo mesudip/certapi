@@ -6,7 +6,7 @@ from typing import Literal
 
 class ChallengeSolver(ABC):
     """
-    Abstract base class for a challenge store.
+    Abstract base class for a challenge solver.
     """
 
     @abstractmethod

@@ -27,7 +27,7 @@ class CertManagerClient:
     def obtain_certificate(
         self,
         hostnames: Union[str, List[str]],
-        key_type: str = "rsa",
+        key_type: str = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,

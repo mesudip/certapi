@@ -5,6 +5,8 @@ This is to be used as a base library for building other tools, or to integrate C
 
 > ⚠️ Warning: This project is in beta. Please stay tuned for the LTS `v1.0.0` release.
 
+For a detailed list of changes, please refer to the [CHANGELOG.md](CHANGELOG.md).
+
 ## Installation
 
 You can install CertApi using pip

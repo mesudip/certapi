@@ -181,7 +181,6 @@ def digest_sha256(data: bytes) -> bytes:
 def get_csr_hostnames(csr: x509.CertificateSigningRequest):
 
     domains = []
-
     common_names = [attr.value for attr in csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)]
     if common_names:
         cn = common_names[0]

@@ -28,17 +28,14 @@ api = Api(
     version="1.0",
     title="CertManager API",
     description="A comprehensive API for managing SSL/TLS certificates.",
-    doc="/swagger-ui",
+    doc="/docs",
 )
 
 key_store: KeyStore = FileSystemKeyStore("db")
 
 challenge_solvers: List[ChallengeSolver] = []
 
-# HTTP Challenge Store
-
-
-# DNS Challenge Stores
+# DNS Challenge Siolver
 if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
     challenge_solvers.append(CloudflareChallengeSolver())
 

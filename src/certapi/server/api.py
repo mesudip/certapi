@@ -38,7 +38,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager):
     obtain_parser.add_argument(
         "hostname", type=str, action="append", required=True, help="List of hostnames for the certificate"
     )
-    obtain_parser.add_argument("key_type", type=str, default="rsa", help="Type of key (rsa or ecdsa)")
+    obtain_parser.add_argument("key_type", type=str, default="ecdsa", help="Type of key (rsa or ecdsa)")
     obtain_parser.add_argument("expiry_days", type=int, default=90, help="Number of days until certificate expiry")
     obtain_parser.add_argument("country", type=str, help="Country name")
     obtain_parser.add_argument("state", type=str, help="State or province name")

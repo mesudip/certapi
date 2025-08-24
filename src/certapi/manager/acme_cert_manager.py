@@ -36,7 +36,7 @@ class AcmeCertManager:
         if not hostnames:
             raise ValueError("CSR does not contain any hostnames.")
 
-        # Find a challenge store that supports all hostnames in the CSR
+        # Find a challenge solver that supports all hostnames in the CSR
         selected_challenge_solver = None
         for store in self.challenge_solvers:
             if all(store.supports_domain(h) for h in hostnames):
@@ -44,7 +44,7 @@ class AcmeCertManager:
                 break
 
         if selected_challenge_solver is None:
-            raise ValueError(f"No challenge store found that supports all domains: {hostnames}")
+            raise ValueError(f"No challenge solver found that supports all domains: {hostnames}")
 
         fullchain_cert = self.cert_issuer.sign_csr(csr, challenge_solver=selected_challenge_solver)
         if fullchain_cert:
@@ -81,7 +81,7 @@ class AcmeCertManager:
         missing = [h for h in hosts if h not in existing]
         if len(missing) > 0:
             issued_certs_list = []
-            # Group missing hosts by the challenge store that supports them
+            # Group missing hosts by the challenge solver that supports them
             domains_by_store: Dict[ChallengeSolver, List[str]] = {}
             for host in missing:
                 found_store = None
