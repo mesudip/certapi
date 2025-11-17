@@ -1,5 +1,6 @@
 import time
 from typing import List, Literal, Optional, Tuple, Union, Dict
+from datetime import datetime, timezone, timedelta
 
 from certapi import crypto
 from ..acme import Challenge
@@ -76,8 +77,11 @@ class AcmeCertManager:
             result = self.key_store.find_key_and_cert_by_domain(h)
             if result is not None:
                 # result is (domain_id, key, cert_list)
-                existing[h] = result  # Store the certificate list
-
+                cert=result[2][0]
+                invalid_date = cert.not_valid_after_utc
+                # Check if the certificate is still valid for at least 30 days
+                if invalid_date > datetime.now(timezone.utc) + timedelta(days=6):
+                    existing[h] = result
         missing = [h for h in hosts if h not in existing]
         if len(missing) > 0:
             issued_certs_list = []
