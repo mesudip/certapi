@@ -9,7 +9,6 @@ testpaths = [
 ]
 env_files =[".env", ".test.env"]
 pythonpath = "src"
-timeout = 10
 
 [build-system]
 requires = ["setuptools>=42"]

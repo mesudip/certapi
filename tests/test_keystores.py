@@ -1,3 +1,4 @@
+from time import timezone
 import pytest
 import os
 import psycopg2  # Added for PostgreSQL database creation
@@ -7,7 +8,7 @@ from certapi import Key, Certificate
 from certapi.crypto.crypto import cert_to_pem, certs_to_pem
 from certapi.keystore import SqliteKeyStore, FileSystemKeyStore, PostgresKeyStore
 from typing import List, Tuple, Union
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from certapi import KeyStore, Certificate, Key
 
 from cryptography import x509
@@ -163,14 +164,15 @@ def test_get_cert_by_id(keystore: KeyStore, ca_key: Key):
 
 
 def sign_csr(csr: x509.CertificateSigningRequest, issuer_key: Key, days_valid=365) -> Certificate:
+    now = datetime.now(UTC)
     builder = (
         x509.CertificateBuilder()
         .subject_name(csr.subject)
         .issuer_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "certapi.pytest.com")]))
         .public_key(csr.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.utcnow())
-        .not_valid_after(datetime.utcnow() + timedelta(days=days_valid))
+        .not_valid_before(now)
+        .not_valid_after(now+ timedelta(days=days_valid))
     )
 
     # Optionally copy extensions from CSR

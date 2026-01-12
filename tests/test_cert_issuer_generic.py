@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from cryptography import x509
 from cryptography.x509.oid import NameOID, ExtensionOID
 from certapi import Key, SelfCertIssuer, Certificate, CertificateSigningRequest, CertificateSigningRequestBuilder
@@ -58,10 +58,10 @@ def test_generate_key_and_cert(self_cert_issuer_instance: SelfCertIssuer, key_ty
     assert set(san_values) == set(unique_expected_sans)
 
     # Verify expiry
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     # Ensure certificate validity dates are timezone-aware UTC for comparison
-    cert_not_valid_before_utc = cert.not_valid_before.astimezone(timezone.utc)
-    cert_not_valid_after_utc = cert.not_valid_after.astimezone(timezone.utc)
+    cert_not_valid_before_utc = cert.not_valid_before_utc.astimezone(timezone.utc)
+    cert_not_valid_after_utc = cert.not_valid_after_utc.astimezone(timezone.utc)
 
     assert cert_not_valid_before_utc <= now_utc
     assert cert_not_valid_after_utc >= now_utc + timedelta(days=expiry_days - 1)  # Allow for slight time difference
