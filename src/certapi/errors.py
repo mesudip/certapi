@@ -12,6 +12,7 @@ class CertApiException(Exception):
         self.detail = detail if detail is not None else {}
         self.step = step
         self.can_retry = False
+        self.retry_delay = 4  # Default retry delay in seconds
 
     def json_obj(self) -> dict:
         return {"name": self.__class__.__name__, "message": self.message, "step": self.step, "detail": self.detail}
