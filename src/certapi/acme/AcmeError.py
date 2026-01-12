@@ -70,7 +70,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             if "Timeout during connect" in err_detail:
                                 error["connect"] = {"error": "Timeout"}
                                 address_used = validation_record.get("addressUsed", "unknown")
-                                port = validation_record.get("port", "unknown")
+                                port = str(validation_record.get("port", "unknown"))
                                 hostname = error.get("hostname", "unknown")
                                 message = (
                                     hostname
@@ -83,7 +83,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             elif err_detail.endswith("Connection refused"):
                                 error["connect"] = {"error": "connection refused"}
                                 address_used = validation_record.get("addressUsed", "unknown")
-                                port = validation_record.get("port", "unknown")
+                                port = str(validation_record.get("port", "unknown"))
                                 hostname = error.get("hostname", "unknown")
                                 message = (
                                     hostname
