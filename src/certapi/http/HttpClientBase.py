@@ -24,7 +24,7 @@ class HttpClientBase(object):
         try:
             res = self.session.request(method, url, json=json_data, data=data, params=params, timeout=timeout)
         except requests.exceptions.ConnectionError as e:
-            print("Request [" + str(res.status_code) + "] : " + method + " " + url + " step=" + str(step))
+            print("Request [Connection Error] : " + method + " " + url + " step=" + str(step))
             raise NetworkError(
                 request=e.request,
                 message=f"Network connection error: {e}",
@@ -32,7 +32,7 @@ class HttpClientBase(object):
                 step=f"HTTP Request ({method} {url})" if step is None else step,
             ) from e
         except requests.exceptions.Timeout as e:
-            print("Request [" + str(res.status_code) + "] : " + method + " " + url + " step=" + str(step))
+            print("Request [Timeout] : " + method + " " + url + " step=" + str(step))
             raise NetworkError(
                 request=e.request,
                 message=f"Request timed out: {e}",
@@ -40,7 +40,7 @@ class HttpClientBase(object):
                 step=f"HTTP Request ({method} {url})" if step is None else step,
             ) from e
         except requests.exceptions.RequestException as e:
-            print("Request [" + str(res.status_code) + "] : " + method + " " + url + " step=" + str(step))
+            print("Request [Request Exception] : " + method + " " + url + " step=" + str(step))
             raise NetworkError(
                 request=e.request,
                 message=f"An unexpected network error occurred: {e}",
@@ -80,8 +80,9 @@ class HttpClientBase(object):
                 return self._req(method, url, step, json_data, data, params, timeout)
             except CertApiException as e:
                 if e.can_retry and i < retries:
-                    print(f"Retrying {method} {url} in {delay} seconds due to retryable error: {e.message}")
-                    time.sleep(delay)
+                    retry_delay = e.retry_delay if hasattr(e, 'retry_delay') else delay
+                    print(f"Retrying {method} {url} in {retry_delay} seconds due to retryable error: {e.message}")
+                    time.sleep(retry_delay)
                 else:
                     e.can_retry = False
                     raise
