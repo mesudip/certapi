@@ -61,30 +61,36 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             message = err_detail
                     else:
                         validation_record = validation_record[0]
-                        error["hostname"] = validation_record["hostname"]
+                        error["hostname"] = validation_record.get("hostname", "unknown")
                         error["dns"] = {
-                            "resolved": validation_record["addressesResolved"],
-                            "used": validation_record["addressUsed"],
+                            "resolved": validation_record.get("addressesResolved"),
+                            "used": validation_record.get("addressUsed"),
                         }
                         if err_type == "urn:ietf:params:acme:error:connection":
                             if "Timeout during connect" in err_detail:
                                 error["connect"] = {"error": "Timeout"}
+                                address_used = validation_record.get("addressUsed", "unknown")
+                                port = str(validation_record.get("port", "unknown"))
+                                hostname = error.get("hostname", "unknown")
                                 message = (
-                                    error["hostname"]
+                                    str(hostname)
                                     + "["
-                                    + validation_record["addressUsed"]
+                                    + address_used
                                     + ":"
-                                    + validation_record["port"]
+                                    + port
                                     + "] Connect Timeout (Maybe firewall reasons)"
                                 )
                             elif err_detail.endswith("Connection refused"):
                                 error["connect"] = {"error": "connection refused"}
+                                address_used = validation_record.get("addressUsed", "unknown")
+                                port = str(validation_record.get("port", "unknown"))
+                                hostname = error.get("hostname", "unknown")
                                 message = (
-                                    error["hostname"]
+                                    str(hostname)
                                     + "["
-                                    + validation_record["addressUsed"]
+                                    + address_used
                                     + ":"
-                                    + validation_record["port"]
+                                    + port
                                     + "] Connection Refused (Is http server running?)"
                                 )
                             elif err_detail:
@@ -98,11 +104,13 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
 
                             if match:
                                 error["response"] = (match.group(1) if match is not None else err_detail,)
-                                error["status_code"] = (error["status"],)
+                                error["status_code"] = (error.get("status"),)
+                                hostname = error.get("hostname", "unknown")
+                                status = error.get("status", "unknown")
                                 message = (
-                                    error["hostname"]
+                                    str(hostname)
                                     + " Status="
-                                    + error["status"]
+                                    + str(status)
                                     + ": Invalid response in challenge url"
                                 )
                             else:
