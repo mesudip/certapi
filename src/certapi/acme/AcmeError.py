@@ -61,7 +61,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             message = err_detail
                     else:
                         validation_record = validation_record[0]
-                        error["hostname"] = validation_record.get("hostname")
+                        error["hostname"] = validation_record.get("hostname", "unknown")
                         error["dns"] = {
                             "resolved": validation_record.get("addressesResolved"),
                             "used": validation_record.get("addressUsed"),
@@ -73,7 +73,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                 port = str(validation_record.get("port", "unknown"))
                                 hostname = error.get("hostname", "unknown")
                                 message = (
-                                    hostname
+                                    str(hostname)
                                     + "["
                                     + address_used
                                     + ":"
@@ -86,7 +86,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                 port = str(validation_record.get("port", "unknown"))
                                 hostname = error.get("hostname", "unknown")
                                 message = (
-                                    hostname
+                                    str(hostname)
                                     + "["
                                     + address_used
                                     + ":"
@@ -108,7 +108,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                 hostname = error.get("hostname", "unknown")
                                 status = error.get("status", "unknown")
                                 message = (
-                                    hostname
+                                    str(hostname)
                                     + " Status="
                                     + str(status)
                                     + ": Invalid response in challenge url"
