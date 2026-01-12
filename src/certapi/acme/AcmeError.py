@@ -131,7 +131,8 @@ class AcmeInvaliOrderError(AcmeHttpError):
         super().__init__(response, step)
 
 
-class AcmeInvaliNonceError(AcmeHttpError):
+class AcmeInvalidNonceError(AcmeHttpError):
     def __init__(self, response: requests.Response, step: str):
         super().__init__(response, step)
         self.can_retry = True
+        self.response=0

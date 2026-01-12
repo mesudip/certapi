@@ -34,7 +34,7 @@ def request(method, step: str, url: str, json=None, headers=None, throw=True) ->
         if json_data and json_data.get("type"):
             errorType = json_data["type"]
             if errorType == "urn:ietf:params:acme:error:badNonce":
-                raise AcmeInvaliNonceError(res, step=step)
+                raise AcmeInvalidNonceError(res, step=step)
 
         if throw:
             raise AcmeHttpError(res, step=step)
