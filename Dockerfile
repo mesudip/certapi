@@ -38,6 +38,8 @@ RUN chown -R certuser:0 /app/src && \
 # Expose the application port (must be > 1024 for rootless)
 EXPOSE 8080
 VOLUME ["/app/db"]
+VOLUME ["/app/acme-challenges"]
+
 
 # Set HOME environment variable to a writable directory
 ENV HOME=/app
