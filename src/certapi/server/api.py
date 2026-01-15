@@ -1,4 +1,6 @@
 import json
+import threading
+import os
 from flask import request, jsonify
 from cryptography.x509 import CertificateSigningRequest
 from flask_restx import Resource, reqparse, fields
@@ -6,7 +8,48 @@ from flask_restx import Resource, reqparse, fields
 from certapi import AcmeCertManager
 
 
-def create_api_resources(api_ns, cert_manager: AcmeCertManager):
+class RenewalQueueFullError(Exception):
+    """Exception raised when the renewal queue is full."""
+
+    pass
+
+
+class RenewalLockManager:
+    def __init__(self, queue_size: int = 5):
+        self.queue_size = queue_size
+        self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
+        self._renewing_domains = set()
+        self._waiting_threads = 0
+
+    def acquire(self, domains):
+        while True:
+            with self._lock:
+                # Check if any domain is already being renewed by another thread
+                if any(h in self._renewing_domains for h in domains):
+                    if self._waiting_threads >= self.queue_size:
+                        raise RenewalQueueFullError("Proper queue is full")
+
+                    self._waiting_threads += 1
+                    self._condition.wait()
+                    self._waiting_threads -= 1
+                    continue  # Re-check everything after waking up
+
+                # Mark as renewing
+                for h in domains:
+                    self._renewing_domains.add(h)
+                break
+
+    def release(self, domains):
+        with self._lock:
+            for h in domains:
+                self._renewing_domains.discard(h)
+            self._condition.notify_all()
+
+
+def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size: int = 5):
+
+    lock_manager = RenewalLockManager(queue_size=renew_queue_size)
 
     # Models for documentation
     issued_cert_model = api_ns.model(
@@ -45,6 +88,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager):
     obtain_parser.add_argument("locality", type=str, help="Locality name")
     obtain_parser.add_argument("organization", type=str, help="Organization name")
     obtain_parser.add_argument("user_id", type=str, help="User ID")
+    obtain_parser.add_argument("renew_threshold_days", type=int, help="Threshold in days for certificate reuse")
 
     @api_ns.route("/obtain")
     class ObtainCert(Resource):
@@ -59,16 +103,23 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager):
             args = obtain_parser.parse_args()
             hostnames = args["hostname"]
 
-            data = cert_manager.issue_certificate(
-                hostnames,
-                key_type=args["key_type"],
-                expiry_days=args["expiry_days"],
-                country=args["country"],
-                state=args["state"],
-                locality=args["locality"],
-                organization=args["organization"],
-                user_id=args["user_id"],
-            )
+            # Acquire lock for the domains
+            lock_manager.acquire(hostnames)
+            try:
+                data = cert_manager.issue_certificate(
+                    hostnames,
+                    key_type=args["key_type"],
+                    expiry_days=args["expiry_days"],
+                    country=args["country"],
+                    state=args["state"],
+                    locality=args["locality"],
+                    organization=args["organization"],
+                    user_id=args["user_id"],
+                    renew_threshold_days=args.get("renew_threshold_days"),
+                )
+            finally:
+                lock_manager.release(hostnames)
+
             print(data)
             print(data.to_json())
             if data:

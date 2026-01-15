@@ -6,7 +6,7 @@ from typing import List
 from flask import Flask, jsonify, request
 from flask_restx import Api, Namespace
 from certapi.crypto.crypto_classes import Key
-from certapi.server.api import create_api_resources
+from certapi.server.api import create_api_resources, RenewalQueueFullError
 from certapi.server.key_api import create_key_resources
 from certapi.server.cert_api import create_cert_resources
 from certapi.acme.Acme import AcmeError, AcmeHttpError, AcmeNetworkError
@@ -42,19 +42,15 @@ if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
 http_challenge_solver = FilesystemChallengeSolver("acme-challenges")
 challenge_solvers.append(http_challenge_solver)
 
-# Create an account key if it doesn't exist
-account_key = key_store.find_key_by_name("acme_account.key")
-if account_key is None:
-    account_key = Key.generate("ecdsa")
-    key_store.save_key(account_key, "acme_account.key")
+cert_issuer = AcmeCertIssuer.with_keystore(key_store, http_challenge_solver)
 
-acme_issuer = AcmeCertIssuer(
-    account_key=account_key, challenge_solver=http_challenge_solver
-)  # AcmeCertIssuer expects a single challenge_solver for its own use
-self_issuer = SelfCertIssuer(account_key, country="NP", state="Bagmati", organization="Sireto Technology")
-# acme_issuer.setup()
-
-cert_manager = AcmeCertManager(key_store=key_store, cert_issuer=self_issuer, challenge_solvers=challenge_solvers)
+cert_manager = AcmeCertManager(
+    key_store=key_store,
+    cert_issuer=cert_issuer,
+    challenge_solvers=challenge_solvers,
+    renew_threshold_days=int(os.getenv("CERT_RENEW_THRESHOLD_DAYS", 75)),
+)
+cert_manager.setup()
 
 # Create namespaces for each blueprint
 api_ns = Namespace("api", description="General API operations")
@@ -66,7 +62,7 @@ api.add_namespace(key_ns)
 api.add_namespace(cert_ns)
 
 
-create_api_resources(api_ns, cert_manager)
+create_api_resources(api_ns, cert_manager, renew_queue_size=int(os.getenv("RENEW_QUEUE_SIZE", 5)))
 create_key_resources(key_ns, key_store)
 create_cert_resources(cert_ns, key_store)
 
@@ -92,5 +88,10 @@ def handle_acme_network_error(error: AcmeHttpError):
     return jsonify({"error": error.json_obj()}), error.response.status_code
 
 
+@app.errorhandler(RenewalQueueFullError)
+def handle_renewal_queue_full_error(error: RenewalQueueFullError):
+    return jsonify({"error": str(error)}), 429
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8081, threaded=True)
+    app.run(host="0.0.0.0", port=8080, threaded=True)

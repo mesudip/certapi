@@ -12,6 +12,8 @@ from ..keystore.KeyStore import KeyStore
 from cryptography.x509 import Certificate, CertificateSigningRequest
 from ..crypto import Key, certs_to_pem, cert_to_pem, get_csr_hostnames
 
+DEFAULT_RENEW_THRESHOLD_DAYS = 62
+
 
 class AcmeCertManager:
     def __init__(
@@ -19,10 +21,14 @@ class AcmeCertManager:
         key_store: KeyStore,
         cert_issuer: AcmeCertIssuer,
         challenge_solvers: List[ChallengeSolver] = [],
+        renew_threshold_days: int = DEFAULT_RENEW_THRESHOLD_DAYS,  # Renewal will be accepted if cert is valid for less than 75 days
     ):
         self.key_store: KeyStore = key_store
         self.cert_issuer: AcmeCertIssuer = cert_issuer
         self.challenge_solvers: List[ChallengeSolver] = challenge_solvers
+        self.renew_threshold_days: int = (
+            DEFAULT_RENEW_THRESHOLD_DAYS if renew_threshold_days is None else renew_threshold_days
+        )
 
     def setup(self):
         names = [solver.__class__.__name__.replace("ChallengeSolver", "") for solver in self.challenge_solvers]
@@ -67,6 +73,7 @@ class AcmeCertManager:
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
+        renew_threshold_days: Optional[int] = None,
     ) -> CertificateResponse:
 
         if type(hosts) == str:
@@ -77,10 +84,11 @@ class AcmeCertManager:
             result = self.key_store.find_key_and_cert_by_domain(h)
             if result is not None:
                 # result is (domain_id, key, cert_list)
-                cert=result[2][0]
+                cert = result[2][0]
                 invalid_date = cert.not_valid_after_utc
-                # Check if the certificate is still valid for at least 30 days
-                if invalid_date > datetime.now(timezone.utc) + timedelta(days=6):
+                # Check if the certificate is still valid for at least renew_threshold_days
+                threshold = renew_threshold_days if renew_threshold_days is not None else self.renew_threshold_days
+                if invalid_date > datetime.now(timezone.utc) + timedelta(days=threshold):
                     existing[h] = result
         missing = [h for h in hosts if h not in existing]
         if len(missing) > 0:

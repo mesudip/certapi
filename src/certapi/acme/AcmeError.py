@@ -108,10 +108,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                                 hostname = error.get("hostname", "unknown")
                                 status = error.get("status", "unknown")
                                 message = (
-                                    str(hostname)
-                                    + " Status="
-                                    + str(status)
-                                    + ": Invalid response in challenge url"
+                                    str(hostname) + " Status=" + str(status) + ": Invalid response in challenge url"
                                 )
                             else:
                                 message = err_detail
@@ -143,4 +140,4 @@ class AcmeInvalidNonceError(AcmeHttpError):
     def __init__(self, response: requests.Response, step: str):
         super().__init__(response, step)
         self.can_retry = True
-        self.response=0
+        self.response = 0
