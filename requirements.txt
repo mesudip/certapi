@@ -1,6 +1,15 @@
+## Library has only 2 requirements
 cryptography
 requests
-# test requirements.
+
+## Requirements for docker-api image
+psycopg2
+flask
+flask-restx
+gunicorn
+
+
+## Requirements for test and dev
 pytest
 pytest-dotenv
-psycopg2
+black
