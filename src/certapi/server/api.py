@@ -45,6 +45,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager):
     obtain_parser.add_argument("locality", type=str, help="Locality name")
     obtain_parser.add_argument("organization", type=str, help="Organization name")
     obtain_parser.add_argument("user_id", type=str, help="User ID")
+    obtain_parser.add_argument("renew_threshold_days", type=int, help="Threshold in days for certificate reuse")
 
     @api_ns.route("/obtain")
     class ObtainCert(Resource):
@@ -68,6 +69,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager):
                 locality=args["locality"],
                 organization=args["organization"],
                 user_id=args["user_id"],
+                renew_threshold_days=args.get("renew_threshold_days"),
             )
             print(data)
             print(data.to_json())

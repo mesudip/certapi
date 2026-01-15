@@ -54,7 +54,12 @@ acme_issuer = AcmeCertIssuer(
 self_issuer = SelfCertIssuer(account_key, country="NP", state="Bagmati", organization="Sireto Technology")
 # acme_issuer.setup()
 
-cert_manager = AcmeCertManager(key_store=key_store, cert_issuer=self_issuer, challenge_solvers=challenge_solvers)
+cert_manager = AcmeCertManager(
+    key_store=key_store,
+    cert_issuer=self_issuer,
+    challenge_solvers=challenge_solvers,
+    renew_threshold_days=int(os.getenv("CERT_RENEW_THRESHOLD_DAYS", 75)),
+)
 
 # Create namespaces for each blueprint
 api_ns = Namespace("api", description="General API operations")
