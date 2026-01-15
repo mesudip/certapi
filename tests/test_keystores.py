@@ -172,7 +172,7 @@ def sign_csr(csr: x509.CertificateSigningRequest, issuer_key: Key, days_valid=36
         .public_key(csr.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(now)
-        .not_valid_after(now+ timedelta(days=days_valid))
+        .not_valid_after(now + timedelta(days=days_valid))
     )
 
     # Optionally copy extensions from CSR

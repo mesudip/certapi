@@ -80,7 +80,7 @@ class HttpClientBase(object):
                 return self._req(method, url, step, json_data, data, params, timeout)
             except CertApiException as e:
                 if e.can_retry and i < retries:
-                    retry_delay = e.retry_delay if hasattr(e, 'retry_delay') else delay
+                    retry_delay = e.retry_delay if hasattr(e, "retry_delay") else delay
                     print(f"Retrying {method} {url} in {retry_delay} seconds due to retryable error: {e.message}")
                     time.sleep(retry_delay)
                 else:
