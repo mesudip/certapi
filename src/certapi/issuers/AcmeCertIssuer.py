@@ -21,6 +21,16 @@ class AcmeCertIssuer(CertIssuer):
         self.challenge_solver = challenge_solver
         self.self_verify_challenge = self_verify_challenge
 
+    @staticmethod
+    def with_keystore(
+        key_store: "KeyStore",
+        challenge_solver: ChallengeSolver,
+        account_key_name: str = "acme_account.key",
+        acme_url: str = None,
+    ) -> "AcmeCertIssuer":
+        account_key, _ = key_store._get_or_generate_key(account_key_name)
+        return AcmeCertIssuer(account_key, challenge_solver, acme_url=acme_url)
+
     def setup(self):
         self.acme.setup()
         res: Response = self.acme.register()

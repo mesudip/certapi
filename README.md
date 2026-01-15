@@ -3,7 +3,6 @@
 CertApi is a Python package for requesting SSL certificates from ACME.
 This is to be used as a base library for building other tools, or to integrate Certificate creation feature in you app.
 
-> ⚠️ Warning: This project is in beta. Please stay tuned for the LTS `v1.0.0` release.
 
 For a detailed list of changes, please refer to the [CHANGELOG.md](CHANGELOG.md).
 
@@ -15,7 +14,7 @@ You can install CertApi using pip
 pip install certapi
 ```
 
-## Example: Obtain Certificate with Cloudflare
+## Example: Low Leve API : Certificate with Cloudflare
 
 ```python
 import json
@@ -27,7 +26,7 @@ from certapi import CertApiException, CloudflareChallengeSolver, Key, AcmeCertIs
 challenge_solver = CloudflareChallengeSolver(api_key=None)
 
 ## initialize cert issuer with a new account key
-cert_issuer = AcmeCertIssuer(Key.generate('rsa'), challenge_solver)
+cert_issuer = AcmeCertIssuer(Key.generate('ecdsa'), challenge_solver)
 
 # Preform setup i.e. fetching directory and registering ACME account
 cert_issuer.setup()
@@ -46,7 +45,45 @@ except CertApiException as e:
 ```
 
 
-## Example: Use High Leve API
+## Example: High Level API (with AcmeCertManager)
 
-```
+The `AcmeCertManager` provides a high-level interface that handles certificate storage, automatic renewal checks, and multi-solver management.
+
+```python
+from certapi import (
+    AcmeCertManager, 
+    FileSystemKeyStore, 
+    AcmeCertIssuer, 
+    CloudflareChallengeSolver
+)
+
+# 1. Setup KeyStore to persist keys and certificates
+key_store = FileSystemKeyStore("db")
+
+
+# DNS-01 via Cloudflare (e.g. for wildcard certs or internal domains)
+dns_solver = CloudflareChallengeSolver(api_token="your-cloudflare-token")
+
+# 3. Initialize and Setup AcmeCertManager
+# Create cert issuer with the default challenge solver
+cert_issuer = AcmeCertIssuer.with_keystore(key_store, dns_solver)
+
+cert_manager = AcmeCertManager(
+    key_store=key_store,
+    cert_issuer=cert_issuer,
+    challenge_solvers=[dns_solver], # other solvers can be used
+    renew_threshold_days=7
+)
+cert_manager.setup()
+
+# 4. Issue or Reuse Certificate
+# Automatically checks keystore and renews only if necessary
+response = cert_manager.issue_certificate(["example.com", "www.example.com"])
+
+for cert_data in response.issued:
+    print(f"Newly issued for: {cert_data.domains}")
+    print(cert_data.cert)
+
+for cert_data in response.existing:
+    print(f"Reusing existing for: {cert_data.domains}")
 ```

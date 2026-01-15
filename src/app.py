@@ -42,24 +42,15 @@ if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
 http_challenge_solver = FilesystemChallengeSolver("acme-challenges")
 challenge_solvers.append(http_challenge_solver)
 
-# Create an account key if it doesn't exist
-account_key = key_store.find_key_by_name("acme_account.key")
-if account_key is None:
-    account_key = Key.generate("ecdsa")
-    key_store.save_key(account_key, "acme_account.key")
-
-acme_issuer = AcmeCertIssuer(
-    account_key=account_key, challenge_solver=http_challenge_solver
-)  # AcmeCertIssuer expects a single challenge_solver for its own use
-self_issuer = SelfCertIssuer(account_key, country="NP", state="Bagmati", organization="Sireto Technology")
-# acme_issuer.setup()
+cert_issuer = AcmeCertIssuer.with_keystore(key_store, http_challenge_solver)
 
 cert_manager = AcmeCertManager(
     key_store=key_store,
-    cert_issuer=self_issuer,
+    cert_issuer=cert_issuer,
     challenge_solvers=challenge_solvers,
     renew_threshold_days=int(os.getenv("CERT_RENEW_THRESHOLD_DAYS", 75)),
 )
+cert_manager.setup()
 
 # Create namespaces for each blueprint
 api_ns = Namespace("api", description="General API operations")
