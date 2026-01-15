@@ -5,6 +5,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV RENEW_QUEUE_SIZE=5
 
 # Install system dependencies
 # postgresql-dev for psycopg2
@@ -48,4 +49,4 @@ ENV PYTHONPATH=/app/src
 USER 1261
 
 # Command to run the application using gunicorn
-ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--threads", "2", "--access-logfile", "-", "app:app"]
+ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "6", "--access-logfile", "-", "app:app"]

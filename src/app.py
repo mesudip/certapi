@@ -6,7 +6,7 @@ from typing import List
 from flask import Flask, jsonify, request
 from flask_restx import Api, Namespace
 from certapi.crypto.crypto_classes import Key
-from certapi.server.api import create_api_resources
+from certapi.server.api import create_api_resources, RenewalQueueFullError
 from certapi.server.key_api import create_key_resources
 from certapi.server.cert_api import create_cert_resources
 from certapi.acme.Acme import AcmeError, AcmeHttpError, AcmeNetworkError
@@ -71,7 +71,7 @@ api.add_namespace(key_ns)
 api.add_namespace(cert_ns)
 
 
-create_api_resources(api_ns, cert_manager)
+create_api_resources(api_ns, cert_manager, renew_queue_size=int(os.getenv("RENEW_QUEUE_SIZE", 5)))
 create_key_resources(key_ns, key_store)
 create_cert_resources(cert_ns, key_store)
 
@@ -95,6 +95,11 @@ def handle_acme_network_error(error: AcmeHttpError):
     print(error.__class__.__name__, error, file=sys.stderr)
     print_filtered_traceback(error)
     return jsonify({"error": error.json_obj()}), error.response.status_code
+
+
+@app.errorhandler(RenewalQueueFullError)
+def handle_renewal_queue_full_error(error: RenewalQueueFullError):
+    return jsonify({"error": str(error)}), 429
 
 
 if __name__ == "__main__":

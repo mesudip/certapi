@@ -14,18 +14,21 @@ from ..crypto import Key, certs_to_pem, cert_to_pem, get_csr_hostnames
 
 DEFAULT_RENEW_THRESHOLD_DAYS = 62
 
+
 class AcmeCertManager:
     def __init__(
         self,
         key_store: KeyStore,
         cert_issuer: AcmeCertIssuer,
         challenge_solvers: List[ChallengeSolver] = [],
-        renew_threshold_days: int = DEFAULT_RENEW_THRESHOLD_DAYS, # Renewal will be accepted if cert is valid for less than 75 days
+        renew_threshold_days: int = DEFAULT_RENEW_THRESHOLD_DAYS,  # Renewal will be accepted if cert is valid for less than 75 days
     ):
         self.key_store: KeyStore = key_store
         self.cert_issuer: AcmeCertIssuer = cert_issuer
         self.challenge_solvers: List[ChallengeSolver] = challenge_solvers
-        self.renew_threshold_days: int = DEFAULT_RENEW_THRESHOLD_DAYS if renew_threshold_days is None else renew_threshold_days
+        self.renew_threshold_days: int = (
+            DEFAULT_RENEW_THRESHOLD_DAYS if renew_threshold_days is None else renew_threshold_days
+        )
 
     def setup(self):
         names = [solver.__class__.__name__.replace("ChallengeSolver", "") for solver in self.challenge_solvers]
@@ -81,7 +84,7 @@ class AcmeCertManager:
             result = self.key_store.find_key_and_cert_by_domain(h)
             if result is not None:
                 # result is (domain_id, key, cert_list)
-                cert=result[2][0]
+                cert = result[2][0]
                 invalid_date = cert.not_valid_after_utc
                 # Check if the certificate is still valid for at least renew_threshold_days
                 threshold = renew_threshold_days if renew_threshold_days is not None else self.renew_threshold_days
