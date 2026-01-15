@@ -3,6 +3,10 @@
 CertApi is a Python package for requesting SSL certificates from ACME.
 This is to be used as a base library for building other tools, or to integrate Certificate creation feature in you app.
 
+[![Build Status](https://github.com/mesudip/certapi/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/mesudip/certapi/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/github/mesudip/certapi/graph/badge.svg?token=NYTNCH29IT)](https://codecov.io/github/mesudip/certapi)
+[![PyPI version](https://img.shields.io/pypi/v/certapi.svg)](https://pypi.org/project/certapi/)
+
 
 For a detailed list of changes, please refer to the [CHANGELOG.md](CHANGELOG.md).
 

@@ -12,4 +12,5 @@ gunicorn
 ## Requirements for test and dev
 pytest
 pytest-dotenv
+pytest-cov
 black
