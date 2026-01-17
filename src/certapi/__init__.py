@@ -21,3 +21,4 @@ from .challenge_solver import (
     DigitalOceanChallengeSolver,
 )
 from .issuers import CertIssuer, SelfCertIssuer, AcmeCertIssuer
+from .client import CertManagerClient
