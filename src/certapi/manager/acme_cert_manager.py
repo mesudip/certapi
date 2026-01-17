@@ -66,7 +66,7 @@ class AcmeCertManager:
     def issue_certificate(
         self,
         hosts: Union[str, List[str]],
-        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,

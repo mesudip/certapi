@@ -1,5 +1,6 @@
 import requests
-from typing import List, Union, Dict, Optional, Any
+from typing import List, Union, Dict, Optional, Any, Literal
+from cryptography import x509
 from certapi.http.types import CertificateResponse, IssuedCert
 
 
@@ -24,19 +25,29 @@ class CertManagerClient:
         response.raise_for_status()
         return response.json()
 
-    def obtain_certificate(
+    def setup(self):
+        """
+        Check connection to the cert manager server.
+        """
+        try:
+            self._get("/keys")
+        except Exception as e:
+            print(f"Warning: CertManagerClient could not connect to {self.base_url}: {e}")
+
+    def issue_certificate(
         self,
-        hostnames: Union[str, List[str]],
-        key_type: str = "ecdsa",
+        hosts: Union[str, List[str]],
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,
         locality: Optional[str] = None,
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
+        renew_threshold_days: Optional[int] = None,
     ) -> CertificateResponse:
         params = {
-            "hostname": hostnames if isinstance(hostnames, str) else hostnames,
+            "hostname": hosts if isinstance(hosts, str) else hosts,
             "key_type": key_type,
             "expiry_days": expiry_days,
         }
@@ -50,11 +61,20 @@ class CertManagerClient:
             params["organization"] = organization
         if user_id:
             params["user_id"] = user_id
+        if renew_threshold_days is not None:
+            params["renew_threshold_days"] = renew_threshold_days
 
         data = self._get("/obtain", params=params)
         return CertificateResponse.from_json(data)
 
-    def sign_csr(self, csr_pem: str) -> str:
+    def issue_certificate_for_csr(self, csr: Union[str, x509.CertificateSigningRequest]) -> str:
+        if not isinstance(csr, str):
+            from ..crypto import csr_to_pem
+
+            csr_pem = csr_to_pem(csr).decode("utf-8")
+        else:
+            csr_pem = csr
+
         response = requests.post(
             f"{self.base_url}/sign_csr", data=csr_pem, headers={"Content-Type": "application/x-pem-file"}
         )
