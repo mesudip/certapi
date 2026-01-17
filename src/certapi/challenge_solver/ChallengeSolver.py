@@ -13,6 +13,9 @@ class ChallengeSolver(ABC):
     def supports_domain(self, domain: str) -> bool:
         pass
 
+    def supports_domain_strict(self, domain: str) -> bool:
+        return self.supports_domain(domain)
+
     @abstractmethod
     def save_challenge(self, key: str, value: str, domain: str = None):
         pass

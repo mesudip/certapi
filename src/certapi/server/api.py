@@ -3,8 +3,9 @@ import threading
 import os
 from flask import request, jsonify
 from cryptography.x509 import CertificateSigningRequest
-from flask_restx import Resource, reqparse, fields
-
+from flask_restx import Resource, reqparse, fields, inputs
+from certapi.challenge_solver import FilesystemChallengeSolver
+from certapi.http.types import CertificateResponse
 from certapi import AcmeCertManager
 
 
@@ -89,6 +90,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
     obtain_parser.add_argument("organization", type=str, help="Organization name")
     obtain_parser.add_argument("user_id", type=str, help="User ID")
     obtain_parser.add_argument("renew_threshold_days", type=int, help="Threshold in days for certificate reuse")
+    obtain_parser.add_argument("skip_failing", type=inputs.boolean, default=False, help="Allow issuance to proceed if some domains fail verification")
 
     @api_ns.route("/obtain")
     class ObtainCert(Resource):
@@ -102,9 +104,27 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
         def get(self):
             args = obtain_parser.parse_args()
             hostnames = args["hostname"]
+            skip_failing = args.get("skip_failing", False)
+
+            lock_manager.acquire(hostnames)
+
+            verified_hostnames = []
+            for h in hostnames:
+                # Find the first solver that supports this domain
+                for solver in reversed(cert_manager.challenge_solvers):
+                    if solver.supports_domain_strict(h):
+                        verified_hostnames.append(h)
+            
+            hostnames = verified_hostnames
+
+            if not hostnames and not skip_failing:
+                api_ns.abort(400, message="None of the domains are owned by this machine or could be verified")
+
+            if not hostnames:
+                data = CertificateResponse()
+                return data.to_json()
 
             # Acquire lock for the domains
-            lock_manager.acquire(hostnames)
             try:
                 data = cert_manager.issue_certificate(
                     hostnames,
