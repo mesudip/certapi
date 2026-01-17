@@ -28,16 +28,17 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
 
     def __init__(self, response: requests.Response, step: str):
         requests.HTTPError.__init__(self, response=response)
-        self.response = response
         (message, detail) = self.extract_acme_response_error()
         AcmeError.__init__(self, message, detail, step)
+        self.response = response
+
 
     def extract_acme_response_error(self):
         message = None
         error = None
         try:
             res_json = self.response.json()
-            if res_json["status"] == "invalid":
+            if res_json.get("status") == "invalid":
                 if res_json["challenges"]:
                     failed_challenge: dict = [x for x in res_json["challenges"] if x["status"] == "invalid"][0]
                     error = failed_challenge["error"]
