@@ -39,11 +39,19 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
         try:
             res_json = self.response.json()
             if res_json.get("status") == "invalid":
-                if res_json["challenges"]:
-                    failed_challenge: dict = [x for x in res_json["challenges"] if x["status"] == "invalid"][0]
-                    error = failed_challenge["error"]
-                    err_detail: str = error.get("detail")
-                    err_type: str = error.get("type")
+                if res_json.get("challenges"):
+                    invalid_challenges = [x for x in res_json["challenges"] if x["status"] == "invalid"]
+                    if not invalid_challenges:
+                        # Fallback if no invalid challenge found but status is invalid
+                        return (None, res_json)
+                        
+                    failed_challenge: dict = invalid_challenges[0]
+                    error = failed_challenge.get("error")
+                    if not error:
+                        return (None, res_json)
+                        
+                    err_detail: str = error.get("detail", "")
+                    err_type: str = error.get("type", "")
                     validation_record: dict = failed_challenge.get("validationRecord")
                     error = {
                         "url": failed_challenge["url"],
@@ -52,7 +60,8 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                         # Search for the pattern and extract the content
                         if err_detail.startswith("DNS problem: NXDOMAIN"):
                             error["dns"] = {"error": "DNS record doesn't exist"}
-                            error["hostname"] = re.findall(r"looking up [A-Z]+ for ([\w.-]+)", err_detail)[0]
+                            hostnames = re.findall(r"looking up [A-Z]+ for ([\w.-]+)", err_detail)
+                            error["hostname"] = hostnames[0] if hostnames else "unknown"
                             message = error["hostname"] + " doesn't have a valid DNS record"
                         elif err_detail:
                             error["dns"] = {"error": err_detail}
@@ -61,7 +70,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             error["dns"] = {"error": error}
                             message = err_detail
                     else:
-                        validation_record = validation_record[0]
+                        validation_record = validation_record[0] if isinstance(validation_record, list) and validation_record else {}
                         error["hostname"] = validation_record.get("hostname", "unknown")
                         error["dns"] = {
                             "resolved": validation_record.get("addressesResolved"),
@@ -132,7 +141,7 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
             return (message, error)
 
 
-class AcmeInvaliOrderError(AcmeHttpError):
+class AcmeInvalidOrderError(AcmeHttpError):
     def __init__(self, response: requests.Response, step: str):
         super().__init__(response, step)
 
@@ -141,4 +150,3 @@ class AcmeInvalidNonceError(AcmeHttpError):
     def __init__(self, response: requests.Response, step: str):
         super().__init__(response, step)
         self.can_retry = True
-        self.response = 0

@@ -68,7 +68,7 @@ class Challenge:
                 self.verified = True
                 return True
             elif res_json["status"] == "invalid":
-                raise AcmeInvaliOrderError(res, "Query Challenge Status")
+                raise AcmeInvalidOrderError(res, "Query Challenge Status")
             else:
                 return False
 

@@ -74,23 +74,26 @@ def acme_challenge(cid):
     return "", 404 if r is None else (r, 200)
 
 
-@app.errorhandler(AcmeNetworkError)
-def handle_acme_http_error(error: AcmeNetworkError):
+@api.errorhandler(AcmeNetworkError)
+def handle_acme_network_error(error: AcmeNetworkError):
     print(error.__class__.__name__, error, file=sys.stderr)
     print_filtered_traceback(error)
-    return jsonify({"error": error.json_obj()}), 400
+    return error.json_obj(), 400
 
 
-@app.errorhandler(AcmeHttpError)
-def handle_acme_network_error(error: AcmeHttpError):
+@api.errorhandler(AcmeHttpError)
+def handle_acme_http_error(error: AcmeHttpError):
     print(error.__class__.__name__, error, file=sys.stderr)
     print_filtered_traceback(error)
-    return jsonify({"error": error.json_obj()}), error.response.status_code
+    status = error.response.status_code
+    if status == 200:
+        status = 400
+    return error.json_obj(), status
 
 
-@app.errorhandler(RenewalQueueFullError)
+@api.errorhandler(RenewalQueueFullError)
 def handle_renewal_queue_full_error(error: RenewalQueueFullError):
-    return jsonify({"error": str(error)}), 429
+    return {"error": str(error)}, 429
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ class Acme:
         self.jwk = account_key.jwk()
         self.alg_name = account_key.algorithm_name()
         self.nonce = []
-        self.acme_url = url if url else os.environ.get("ACME_API_URL", self.URL_STAGING)
+        self.acme_url = url if url else os.environ.get("ACME_API_URL", self.URL_PROD)
         self.key_id = None
         self.directory = None
         self._nonce_lock = threading.Lock()  # Mutex for safe access to nonce
