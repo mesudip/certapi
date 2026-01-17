@@ -10,6 +10,7 @@ from certapi.server.api import create_api_resources, RenewalQueueFullError
 from certapi.server.key_api import create_key_resources
 from certapi.server.cert_api import create_cert_resources
 from certapi.acme.Acme import AcmeError, AcmeHttpError, AcmeNetworkError
+from certapi.errors import CertApiException
 from certapi.utils import print_filtered_traceback
 from certapi.challenge_solver import ChallengeSolver, FilesystemChallengeSolver
 from certapi.challenge_solver.dns.cloudflare.cloudflare_challenge_solver import CloudflareChallengeSolver
@@ -74,26 +75,30 @@ def acme_challenge(cid):
     return "", 404 if r is None else (r, 200)
 
 
-@api.errorhandler(AcmeNetworkError)
-def handle_acme_network_error(error: AcmeNetworkError):
-    print(error.__class__.__name__, error, file=sys.stderr)
+@api.errorhandler(CertApiException)
+def handle_certapi_error(error: CertApiException):
+    print(f"CertApiException [{error.__class__.__name__}]: {error}", file=sys.stderr)
     print_filtered_traceback(error)
-    return error.json_obj(), 400
-
-
-@api.errorhandler(AcmeHttpError)
-def handle_acme_http_error(error: AcmeHttpError):
-    print(error.__class__.__name__, error, file=sys.stderr)
-    print_filtered_traceback(error)
-    status = error.response.status_code
-    if status == 200:
-        status = 400
+    
+    status = 400
+    if isinstance(error, AcmeHttpError):
+        status = error.response.status_code
+        if status == 200:
+            status = 400
+            
     return error.json_obj(), status
 
 
 @api.errorhandler(RenewalQueueFullError)
 def handle_renewal_queue_full_error(error: RenewalQueueFullError):
     return {"error": str(error)}, 429
+
+
+@api.errorhandler(Exception)
+def handle_generic_exception(error: Exception):
+    print(f"Unhandled Exception: {error}", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    return {"message": "Internal Server Error", "error": str(error)}, 500
 
 
 if __name__ == "__main__":

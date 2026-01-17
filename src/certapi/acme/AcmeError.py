@@ -113,8 +113,8 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             match = re.search(pattern, err_detail)
 
                             if match:
-                                error["response"] = (match.group(1) if match is not None else err_detail,)
-                                error["status_code"] = (error.get("status"),)
+                                error["response"] = match.group(1) if match is not None else err_detail
+                                error["status_code"] = error.get("status")
                                 hostname = error.get("hostname", "unknown")
                                 status = error.get("status", "unknown")
                                 message = (
