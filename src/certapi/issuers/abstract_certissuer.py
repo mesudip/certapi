@@ -30,7 +30,7 @@ class CertIssuer(ABC):
     def generate_key_and_cert_for_domains(
         self,
         hosts: Union[str, List[str]],
-        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,
@@ -57,7 +57,7 @@ class CertIssuer(ABC):
     def generate_key_and_cert_for_domain(
         self,
         host: str,
-        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,

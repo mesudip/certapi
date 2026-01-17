@@ -28,7 +28,7 @@ class AcmeCertIssuer(CertIssuer):
         account_key_name: str = "acme_account.key",
         acme_url: str = None,
     ) -> "AcmeCertIssuer":
-        account_key, _ = key_store._get_or_generate_key(account_key_name)
+        account_key, _ = key_store._get_or_generate_key(account_key_name, "rsa")
         return AcmeCertIssuer(account_key, challenge_solver, acme_url=acme_url)
 
     def setup(self):
@@ -103,7 +103,7 @@ class AcmeCertIssuer(CertIssuer):
     def generate_key_and_cert_for_domains(
         self,
         hosts: Union[str, List[str]],
-        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,
@@ -130,7 +130,7 @@ class AcmeCertIssuer(CertIssuer):
     def generate_key_and_cert_for_domain(
         self,
         host: str,
-        key_type: Literal["rsa", "ecdsa", "ed25519"] = "rsa",
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
         country: Optional[str] = None,
         state: Optional[str] = None,
