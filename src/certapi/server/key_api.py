@@ -23,7 +23,7 @@ def create_key_resources(key_ns, key_store):
         },
     )
 
-    @key_ns.route("/keys")
+    @key_ns.route("/")
     class KeyList(Resource):
         @key_ns.doc("list_keys")
         @key_ns.marshal_list_with(key_model)
@@ -49,7 +49,7 @@ def create_key_resources(key_ns, key_store):
             except Exception as e:
                 key_ns.abort(500, f"Error saving key: {e}")
 
-    @key_ns.route("/keys/<string:key_id>")
+    @key_ns.route("/<string:key_id>")
     @key_ns.param("key_id", "The key identifier")
     class KeyById(Resource):
         @key_ns.doc("get_key_by_id")
@@ -62,7 +62,7 @@ def create_key_resources(key_ns, key_store):
             else:
                 key_ns.abort(404, message="Key not found")
 
-    @key_ns.route("/keys/name/<string:name>")
+    @key_ns.route("/name/<string:name>")
     @key_ns.param("name", "The key name")
     class KeyByName(Resource):
         @key_ns.doc("get_key_by_name")

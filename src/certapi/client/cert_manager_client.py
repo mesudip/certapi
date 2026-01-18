@@ -69,7 +69,7 @@ class CertManagerClient:
             params["renew_threshold_days"] = renew_threshold_days
         params["skip_failing"] = skip_failing
 
-        data = self._get("/obtain", params=params)
+        data = self._get("/api/obtain", params=params)
         res = CertificateResponse.from_json(data)
 
         if self.key_store:
@@ -93,7 +93,7 @@ class CertManagerClient:
             csr_pem = csr
 
         response = requests.post(
-            f"{self.base_url}/sign_csr", data=csr_pem, headers={"Content-Type": "application/x-pem-file"}
+            f"{self.base_url}/api/sign_csr", data=csr_pem, headers={"Content-Type": "application/x-pem-file"}
         )
         response.raise_for_status()
         return response.text

@@ -98,6 +98,13 @@ def handle_renewal_queue_full_error(error: RenewalQueueFullError):
 
 @api.errorhandler(Exception)
 def handle_generic_exception(error: Exception):
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(error, HTTPException):
+        # Prefer specific message from abort() or custom errors, fall back to generic description
+        message = getattr(error, "data", {}).get("message") or error.description
+        return {"message": message}, error.code
+
     print(f"Unhandled Exception: {error}", file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
     return {"message": "Internal Server Error", "error": str(error)}, 500

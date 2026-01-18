@@ -34,7 +34,7 @@ def create_cert_resources(cert_ns, key_store):
     cert_list_parser = reqparse.RequestParser()
     cert_list_parser.add_argument("domain", type=str, help="Filter certificates by domain")
 
-    @cert_ns.route("/certs")
+    @cert_ns.route("/")
     class CertList(Resource):
         @cert_ns.doc("list_certs")
         @cert_ns.expect(cert_list_parser)
@@ -94,7 +94,7 @@ def create_cert_resources(cert_ns, key_store):
             except Exception as e:
                 cert_ns.abort(500, f"Error saving certificate: {e}")
 
-    @cert_ns.route("/certs/<string:cert_id>")
+    @cert_ns.route("/<string:cert_id>")
     @cert_ns.param("cert_id", "The certificate identifier")
     class CertById(Resource):
         @cert_ns.doc("get_cert_by_id")
