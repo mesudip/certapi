@@ -72,7 +72,9 @@ create_cert_resources(cert_ns, key_store)
 def acme_challenge(cid):
     r = http_challenge_solver.get_challenge(cid)
     print(f"[{request.method}] /.well-known/acme-challenge/{cid} = {r}")
-    return "", 404 if r is None else (r, 200)
+    if r is None:
+        return "", 404
+    return r, 200
 
 
 @api.errorhandler(CertApiException)
