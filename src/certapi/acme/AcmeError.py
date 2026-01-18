@@ -32,7 +32,6 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
         AcmeError.__init__(self, message, detail, step)
         self.response = response
 
-
     def extract_acme_response_error(self):
         message = None
         error = None
@@ -44,12 +43,12 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                     if not invalid_challenges:
                         # Fallback if no invalid challenge found but status is invalid
                         return (None, res_json)
-                        
+
                     failed_challenge: dict = invalid_challenges[0]
                     error = failed_challenge.get("error")
                     if not error:
                         return (None, res_json)
-                        
+
                     err_detail: str = error.get("detail", "")
                     err_type: str = error.get("type", "")
                     validation_record: dict = failed_challenge.get("validationRecord")
@@ -70,7 +69,9 @@ class AcmeHttpError(AcmeError, requests.HTTPError):
                             error["dns"] = {"error": error}
                             message = err_detail
                     else:
-                        validation_record = validation_record[0] if isinstance(validation_record, list) and validation_record else {}
+                        validation_record = (
+                            validation_record[0] if isinstance(validation_record, list) and validation_record else {}
+                        )
                         error["hostname"] = validation_record.get("hostname", "unknown")
                         error["dns"] = {
                             "resolved": validation_record.get("addressesResolved"),

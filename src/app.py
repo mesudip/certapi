@@ -79,13 +79,13 @@ def acme_challenge(cid):
 def handle_certapi_error(error: CertApiException):
     print(f"CertApiException [{error.__class__.__name__}]: {error}", file=sys.stderr)
     print_filtered_traceback(error)
-    
+
     status = 400
     if isinstance(error, AcmeHttpError):
         status = error.response.status_code
         if status == 200:
             status = 400
-            
+
     return error.json_obj(), status
 
 

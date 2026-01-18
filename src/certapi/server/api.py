@@ -91,7 +91,12 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
     obtain_parser.add_argument("organization", type=str, help="Organization name")
     obtain_parser.add_argument("user_id", type=str, help="User ID")
     obtain_parser.add_argument("renew_threshold_days", type=int, help="Threshold in days for certificate reuse")
-    obtain_parser.add_argument("skip_failing", type=inputs.boolean, default=False, help="Allow issuance to proceed if some domains fail verification")
+    obtain_parser.add_argument(
+        "skip_failing",
+        type=inputs.boolean,
+        default=False,
+        help="Allow issuance to proceed if some domains fail verification",
+    )
 
     @api_ns.route("/obtain")
     class ObtainCert(Resource):
@@ -114,7 +119,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
                     for solver in reversed(cert_manager.challenge_solvers):
                         if solver.supports_domain_strict(h):
                             verified_hostnames.append(h)
-                
+
                 hostnames = verified_hostnames
 
                 if not hostnames and not skip_failing:
@@ -134,7 +139,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
                     user_id=args["user_id"],
                     renew_threshold_days=args.get("renew_threshold_days"),
                 )
-                
+
                 print(data)
                 if data:
                     res_json = data.to_json()

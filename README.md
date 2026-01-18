@@ -1,14 +1,15 @@
-# CertApi
+CertApi
+=============================
 
-CertApi is a Python package for requesting SSL certificates from ACME.
-This is to be used as a base library for building other tools, or to integrate Certificate creation feature in you app.
+Certapi talks with DNS provider and ACME to issue SSL certificates and save it to a keystore.
+
+CertApi is a base library for building other tools, or to integrate Certificate creation feature in your app. CertAPI also provides HTTP api server and can be deployed using Docker
 
 [![Build Status](https://github.com/mesudip/certapi/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/mesudip/certapi/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/github/mesudip/certapi/graph/badge.svg?token=NYTNCH29IT)](https://codecov.io/github/mesudip/certapi)
 [![PyPI version](https://img.shields.io/pypi/v/certapi.svg)](https://pypi.org/project/certapi/)
 
 
-For a detailed list of changes, please refer to the [CHANGELOG.md](CHANGELOG.md).
 
 ## Installation
 
@@ -76,12 +77,11 @@ cert_manager = AcmeCertManager(
     key_store=key_store,
     cert_issuer=cert_issuer,
     challenge_solvers=[dns_solver], # other solvers can be used
-    renew_threshold_days=7
-)
+    )
 cert_manager.setup()
 
 # 4. Issue or Reuse Certificate
-# Automatically checks keystore and renews only if necessary
+# Automatically checks sand saves to keystore. Renews only if necessary.
 response = cert_manager.issue_certificate(["example.com", "www.example.com"])
 
 for cert_data in response.issued:
