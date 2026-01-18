@@ -2,11 +2,14 @@ import requests
 from typing import List, Union, Dict, Optional, Any, Literal
 from cryptography import x509
 from certapi.http.types import CertificateResponse, IssuedCert
+from certapi.keystore.KeyStore import KeyStore
+from certapi.crypto import Key
 
 
 class CertManagerClient:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, key_store: Optional[KeyStore] = None):
         self.base_url = base_url
+        self.key_store = key_store
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         response = requests.get(f"{self.base_url}{path}", params=params)
@@ -65,7 +68,19 @@ class CertManagerClient:
             params["renew_threshold_days"] = renew_threshold_days
 
         data = self._get("/obtain", params=params)
-        return CertificateResponse.from_json(data)
+        res = CertificateResponse.from_json(data)
+
+        if self.key_store:
+            for cert_data in res.issued + res.existing:
+                if cert_data.privateKey and cert_data.certificate:
+                    try:
+                        key = Key.from_pem(cert_data.privateKey.encode("utf-8"))
+                        key_id = self.key_store.save_key(key, cert_data.domains[0])
+                        self.key_store.save_cert(key_id, cert_data.certificate, cert_data.domains)
+                    except Exception as e:
+                        print(f"Warning: Failed to save certificate for {cert_data.domains} to KeyStore: {e}")
+                        raise e
+        return res
 
     def issue_certificate_for_csr(self, csr: Union[str, x509.CertificateSigningRequest]) -> str:
         if not isinstance(csr, str):
