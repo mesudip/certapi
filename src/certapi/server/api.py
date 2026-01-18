@@ -16,36 +16,37 @@ class RenewalQueueFullError(Exception):
 
 
 class RenewalLockManager:
-    def __init__(self, queue_size: int = 5):
+    def __init__(self, queue_size: int = 16):
         self.queue_size = queue_size
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
-        self._renewing_domains = set()
+        self._busy = False
         self._waiting_threads = 0
 
-    def acquire(self, domains):
-        while True:
-            with self._lock:
-                # Check if any domain is already being renewed by another thread
-                if any(h in self._renewing_domains for h in domains):
-                    if self._waiting_threads >= self.queue_size:
-                        raise RenewalQueueFullError("Proper queue is full")
-
-                    self._waiting_threads += 1
-                    self._condition.wait()
-                    self._waiting_threads -= 1
-                    continue  # Re-check everything after waking up
-
-                # Mark as renewing
-                for h in domains:
-                    self._renewing_domains.add(h)
-                break
-
-    def release(self, domains):
+    def acquire(self, domains=None):
         with self._lock:
-            for h in domains:
-                self._renewing_domains.discard(h)
+            while self._busy:
+                if self._waiting_threads >= self.queue_size:
+                    raise RenewalQueueFullError("Renewal queue is full, please try again later")
+
+                self._waiting_threads += 1
+                self._condition.wait()
+                self._waiting_threads -= 1
+
+            # Mark as busy
+            self._busy = True
+
+    def release(self, domains=None):
+        with self._lock:
+            self._busy = False
             self._condition.notify_all()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
 
 
 def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size: int = 5):
@@ -106,26 +107,22 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
             hostnames = args["hostname"]
             skip_failing = args.get("skip_failing", False)
 
-            lock_manager.acquire(hostnames)
+            with lock_manager:
+                verified_hostnames = []
+                for h in hostnames:
+                    # Find the first solver that supports this domain
+                    for solver in reversed(cert_manager.challenge_solvers):
+                        if solver.supports_domain_strict(h):
+                            verified_hostnames.append(h)
+                
+                hostnames = verified_hostnames
 
-            verified_hostnames = []
-            for h in hostnames:
-                # Find the first solver that supports this domain
-                for solver in reversed(cert_manager.challenge_solvers):
-                    if solver.supports_domain_strict(h):
-                        verified_hostnames.append(h)
-            
-            hostnames = verified_hostnames
+                if not hostnames and not skip_failing:
+                    api_ns.abort(400, message="None of the domains are owned by this machine or could be verified")
 
-            if not hostnames and not skip_failing:
-                api_ns.abort(400, message="None of the domains are owned by this machine or could be verified")
+                if not hostnames:
+                    return CertificateResponse().to_json()
 
-            if not hostnames:
-                data = CertificateResponse()
-                return data.to_json()
-
-            # Acquire lock for the domains
-            try:
                 data = cert_manager.issue_certificate(
                     hostnames,
                     key_type=args["key_type"],
@@ -137,15 +134,13 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
                     user_id=args["user_id"],
                     renew_threshold_days=args.get("renew_threshold_days"),
                 )
-            finally:
-                lock_manager.release(hostnames)
-
-            print(data)
-            print(data.to_json())
-            if data:
-                return data.to_json()
-            else:
-                api_ns.abort(500, message="something went wrong")
+                
+                print(data)
+                if data:
+                    res_json = data.to_json()
+                    return res_json
+                else:
+                    api_ns.abort(500, message="something went wrong")
 
     @api_ns.route("/sign_csr")
     class SignCsr(Resource):

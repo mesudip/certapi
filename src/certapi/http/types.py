@@ -41,7 +41,7 @@ class IssuedCert:
         return f"IssuedCert(domains={self.domains})"
 
     def __str__(self):
-        return f"(hosts: {self.domains}, certificate:{self.certificate})"
+        return f"(domains: {self.domains}, certificate:{self.certificate})"
 
     def to_json(self):
         return {"privateKey": self.privateKey, "certificate": self.certificate, "domains": self.domains}
