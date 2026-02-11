@@ -11,7 +11,14 @@ from urllib.parse import unquote
 
 import requests
 
-from certapi import AcmeCertIssuer, CertApiException, CloudflareChallengeSolver, InMemoryChallengeSolver, Key
+from certapi import (
+    AcmeCertIssuer,
+    CertApiException,
+    CloudflareChallengeSolver,
+    FileSystemKeyStore,
+    InMemoryChallengeSolver,
+)
+from certapi.crypto import certs_from_pem
 
 
 def is_root() -> bool:
@@ -95,14 +102,29 @@ def obtain_certificate(domains: List[str], api_key: Optional[str] = None):
         print("Starting HTTP challenge server on port 80...")
         server, _ = _start_http_challenge_server(challenge_solver, port=80)
 
-    cert_issuer = AcmeCertIssuer(Key.generate("ecdsa"), challenge_solver)
+    keystore_path = "/etc/ssl"
+    key_store = FileSystemKeyStore(keystore_path)
+    cert_issuer = AcmeCertIssuer.with_keystore(
+        key_store,
+        challenge_solver,
+        account_key_name="acme_account",
+    )
     cert_issuer.setup()
     try:
-        key, cert = cert_issuer.generate_key_and_cert_for_domains(domains)
-        print("------ Private Key -----")
-        print(key.to_pem().decode("utf-8"))
-        print("------- Certificate ------")
-        print(cert)
+        key, cert = cert_issuer.generate_key_and_cert_for_domains(domains, key_type="rsa")
+        key_name = domains[0]
+        key_id = key_store.save_key(key, key_name)
+        key_store.save_cert(key_id, cert, domains, name=key_name)
+
+        cert_chain = certs_from_pem(cert.encode("utf-8"))
+        leaf_cert = cert_chain[0] if cert_chain else None
+        expiry = leaf_cert.not_valid_after.isoformat() if leaf_cert else "unknown"
+
+        key_path = os.path.join(key_store.keys_dir, f"{key_name}.key")
+        cert_path = os.path.join(key_store.certs_dir, f"{key_name}.crt")
+        print(f"\n   Certificate expires at: {expiry}")
+        print(f"   Key path: {key_path}")
+        print(f"   Cert path: {cert_path}")
     except CertApiException as e:
         print("An error occurred:")
         print(e.json_obj())
@@ -113,60 +135,66 @@ def obtain_certificate(domains: List[str], api_key: Optional[str] = None):
 
 
 def verify_environment(domains: List[str], api_key: Optional[str] = None) -> None:
-    print("certapi is installed and CLI is working.")
+    print("[verify] certapi CLI ready")
     if api_key:
-        print("Cloudflare API key detected. DNS challenge is available.")
+        print("[verify] Cloudflare API key detected; DNS-01 challenge available")
         if domains:
             solver = CloudflareChallengeSolver(api_key=api_key)
             unsupported = [domain for domain in domains if not solver.supports_domain(domain)]
             if unsupported:
-                print("Warning: Cloudflare account does not appear to manage:")
+                print("[verify] Warning: Cloudflare account does not appear to manage:")
                 for domain in unsupported:
-                    print(f"- {domain}")
+                    print(f"[verify] - {domain}")
             else:
-                print("Cloudflare account appears to manage the provided domain(s).")
+                print("[verify] Cloudflare account appears to manage the provided domain(s)")
     else:
-        print("Cloudflare API key not detected. HTTP challenge will be used.")
+        print("[verify] Cloudflare API key not detected; HTTP-01 challenge will be used")
         if not domains:
-            print("No domains provided. Skipping HTTP routing check.")
+            print("[verify] No domains provided; skipping HTTP routing check")
             return
         if is_root():
             pids = find_process_on_port(80)
             if pids:
-                print(f"Warning: port 80 is in use by process(es): {', '.join(pids)}")
+                print(f"[verify] Warning: port 80 is in use by process(es): {', '.join(pids)}")
             else:
-                print("Port 80 is available.")
+                print("[verify] Port 80 is available")
         else:
-            print("Warning: not running as root, port 80 binding will fail.")
+            print("[verify] Warning: not running as root; port 80 binding will fail")
             return
 
         _ensure_port_80_available()
         challenge_solver = InMemoryChallengeSolver()
-        print("Starting HTTP challenge server on port 80...")
+        print("[verify] Starting HTTP challenge server on port 80...")
         server, _ = _start_http_challenge_server(challenge_solver, port=80)
+        ok = 0
+        failed = 0
         try:
             for domain in domains:
                 token = secrets.token_urlsafe(24)
                 value = secrets.token_urlsafe(32)
                 challenge_solver.save_challenge(token, value, domain)
                 url = f"http://{domain}/.well-known/acme-challenge/{token}"
-                print(f"Verifying HTTP routing for {domain}...")
+                print(f"[verify] Checking HTTP routing for {domain}...")
                 try:
                     response = requests.get(url, allow_redirects=False, timeout=5)
                     if response.status_code == 200 and response.text.strip() == value:
-                        print(f"OK: {domain} routes to this server.")
+                        ok += 1
+                        print(f"[verify] OK: {domain} routes to this server")
                     else:
+                        failed += 1
                         print(
-                            f"Failed: {domain} returned status {response.status_code} "
+                            f"[verify] FAILED: {domain} returned status {response.status_code} "
                             f"with body '{response.text.strip()}'"
                         )
                 except requests.RequestException as exc:
-                    print(f"Failed: {domain} request error: {exc}")
+                    failed += 1
+                    print(f"[verify] FAILED: {domain} request error: {exc}")
                 finally:
                     challenge_solver.delete_challenge(token, domain)
         finally:
             server.shutdown()
             server.server_close()
+            print(f"\n         Summary: {ok} OK, {failed} FAILED")
 
 
 def main():
