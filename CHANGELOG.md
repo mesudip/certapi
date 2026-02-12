@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   
+
+## [1.1.0] - 2026-02-12
+### Added
+- Command-line interface (`certapi` / `cli`) exposing common workflows: `issue`, `renew`, `list`, and `revoke`.
+- Config file support and environment variable overrides for local/CI usage.
+- Enhanced logging, debug flags, and more informative CLI error messages.
+### Changed
+- Improved CLI-friendly output formats (plain text and JSON) for scripting and automation.
+### Fixed
+- Various integration and usability issues discovered during CLI testing.
+
+## [1.0.5] - 2026-02-08
+### Added
+- Packaging and CI improvements: `pyproject.toml` / `requirements.txt` updates and release automation tweaks.
+### Fixed
+- Docker image tagging and Dockerfile fixes for reproducible builds.
+- Miscellaneous minor bugfixes and documentation tweaks.
+
+## [1.0.4] - 2026-02-02
+### Added
+- Postgres keystore robustness improvements and better sqlite fallback handling.
+### Fixed
+- Packaging metadata and dependency pinning issues causing install-time warnings.
+
+## [1.0.3] - 2026-01-28
+### Added
+- Improved DNS provider integrations (Cloudflare/DigitalOcean) for TXT record cleanup.
+### Fixed
+- Race conditions during challenge creation and cleanup under heavy concurrency.
+- Robustness fixes for order certificate retrieval and decoding.
+
+## [1.0.2] - 2026-01-22
+### Added
+- Additional sanity checks when loading keys and certificates from keystores.
+### Fixed
+- Retry/backoff handling for transient HTTP and DNS provider errors.
+- Test stability fixes for challenge cleanup routines.
+
+## [1.0.1] - 2026-01-20
+### Added
+- Small improvements to logging and diagnostic output for ACME flows.
+### Fixed
+- Keystore path handling edge-cases that caused certificate lookups to fail.
+- Minor bugfixes in ACME error parsing to avoid missing-detail exceptions.
+
 ## [1.0.0] - 2026-01-15
 ### Added
 - Production Docker image (multi-arch, rootless, Gunicorn, port `8080`).
@@ -14,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Standardized environment variables, error handling, and minor typos.
+
 
 ## [0.6.0] - 2026-01-12
 ### ToDo
