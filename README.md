@@ -9,6 +9,16 @@ CertApi is a base library for building other tools, or to integrate Certificate 
 [![codecov](https://codecov.io/github/mesudip/certapi/graph/badge.svg?token=NYTNCH29IT)](https://codecov.io/github/mesudip/certapi)
 [![PyPI version](https://img.shields.io/pypi/v/certapi.svg)](https://pypi.org/project/certapi/)
 
+## Why another library?
+
+I designed this library so that it can be imported and plugged in to other python projects. Goal is not to provide CLIs or quick working demo, but to be versatile for any use case.
+
+- Pluggable keystores for keys and certificates
+- Pluggable Challenge solvers for DNS and Http challenge solving
+- High-level manager with renewal checks and multi-solver support
+- Same interface for working locally, or requesting certificate from certapi server.
+
+See the developer guide in [Developer.md](Developer.md) for library usage and workflows.
 
 
 ## Installation
@@ -19,75 +29,38 @@ You can install CertApi using pip
 pip install certapi
 ```
 
-## Example: Low Leve API : Certificate with Cloudflare
+## CLI
 
-```python
-import json
-from certapi import CertApiException, CloudflareChallengeSolver, Key, AcmeCertIssuer
+CertApi also ships with a CLI for quick verification and certificate issuance.
 
-
-# Initialize the Cloudflare challenge solver
-# The API key is read from the CLOUDFLARE_API_KEY environment variable, or you can set it below.
-challenge_solver = CloudflareChallengeSolver(api_key=None)
-
-## initialize cert issuer with a new account key
-cert_issuer = AcmeCertIssuer(Key.generate('ecdsa'), challenge_solver)
-
-# Preform setup i.e. fetching directory and registering ACME account
-cert_issuer.setup()
-
-try:
-    # Obtain a certificate for your domain
-    (key, cert) = cert_issuer.generate_key_and_cert_for_domain("your-domain.com")
-
-    print("------ Private Key -----")
-    print(key.to_pem())
-    print("------- Certificate ------")
-    print(cert)
-except CertApiException as e:
-    print(f"An error occurred:", json.dumps(e.json_obj(), indent=2))
-
+```bash
+## Certapi's dependencies are already included in the python installation. This doesn't affect the system.
+sudo python3 -m pip install certapi --break-system-packages
 ```
 
+### 1. With HTTP Challenge
 
-## Example: High Level API (with AcmeCertManager)
+HTTP challenge requires you to have seup the DNS correctly. The ACME server will verify your domain by making an HTTP request.
 
-The `AcmeCertManager` provides a high-level interface that handles certificate storage, automatic renewal checks, and multi-solver management.
+```bash
+# Verify environment and HTTP routing
+sudo certapi verify example.com www.example.com
 
-```python
-from certapi import (
-    AcmeCertManager, 
-    FileSystemKeyStore, 
-    AcmeCertIssuer, 
-    CloudflareChallengeSolver
-)
+# Obtain a certificate (requires root for HTTP-01)
+sudo certapi obtain example.com www.example.com
+```
 
-# 1. Setup KeyStore to persist keys and certificates
-key_store = FileSystemKeyStore("db")
+### 2. With DNS Provider Key
 
+Using DNS-01 challenge with Cloudflare doesn't require the DNS to be setup. Set your Cloudflare API key as an environment variable.
 
-# DNS-01 via Cloudflare (e.g. for wildcard certs or internal domains)
-dns_solver = CloudflareChallengeSolver(api_token="your-cloudflare-token")
+```bash
+# Set Cloudflare API key or token
+export CLOUDFLARE_API_KEY=...   # or CLOUDFLARE_API_TOKEN
 
-# 3. Initialize and Setup AcmeCertManager
-# Create cert issuer with the default challenge solver
-cert_issuer = AcmeCertIssuer.with_keystore(key_store, dns_solver)
+# Verify DNS configuration
+sudo certapi verify example.com
 
-cert_manager = AcmeCertManager(
-    key_store=key_store,
-    cert_issuer=cert_issuer,
-    challenge_solvers=[dns_solver], # other solvers can be used
-    )
-cert_manager.setup()
-
-# 4. Issue or Reuse Certificate
-# Automatically checks sand saves to keystore. Renews only if necessary.
-response = cert_manager.issue_certificate(["example.com", "www.example.com"])
-
-for cert_data in response.issued:
-    print(f"Newly issued for: {cert_data.domains}")
-    print(cert_data.cert)
-
-for cert_data in response.existing:
-    print(f"Reusing existing for: {cert_data.domains}")
+# Obtain a certificate using DNS-01
+sudo certapi obtain example.com www.example.com
 ```

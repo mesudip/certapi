@@ -25,7 +25,7 @@ class AcmeCertIssuer(CertIssuer):
     def with_keystore(
         key_store: "KeyStore",
         challenge_solver: ChallengeSolver,
-        account_key_name: str = "acme_account.key",
+        account_key_name: str = "acme_account",
         acme_url: str = None,
     ) -> "AcmeCertIssuer":
         account_key, _ = key_store._get_or_generate_key(account_key_name, "rsa")

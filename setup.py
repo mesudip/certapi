@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="certapi",
-    version="1.0.5",
+    version="1.1.0",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
@@ -22,4 +22,9 @@ setup(
         "Operating System :: OS Independent",
     ],
     python_requires=">=3.6",
+    entry_points={
+        "console_scripts": [
+            "certapi=certapi.cli:main",
+        ],
+    },
 )
