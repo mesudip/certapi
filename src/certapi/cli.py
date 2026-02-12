@@ -22,14 +22,36 @@ from certapi.crypto import certs_from_pem
 
 
 def is_root() -> bool:
-    return hasattr(os, "geteuid") and os.geteuid() == 0
+    """Check if running with elevated privileges (cross-platform)."""
+    try:
+        if os.name == "nt":  # Windows
+            import ctypes
+
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        else:  # Unix-like (Linux, macOS)
+            return os.geteuid() == 0
+    except (AttributeError, ImportError, OSError):
+        return False
 
 
 def find_process_on_port(port: int) -> List[str]:
+    """Find processes using a specific port (cross-platform)."""
     try:
-        result = subprocess.check_output(["lsof", "-i", f":{port}", "-t"]).decode().strip()
-        return result.split("\n") if result else []
-    except subprocess.CalledProcessError:
+        if os.name == "nt":  # Windows
+            result = subprocess.check_output(["netstat", "-ano"], stderr=subprocess.DEVNULL).decode().strip()
+            pids = []
+            for line in result.split("\n"):
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    if parts:
+                        pids.append(parts[-1])
+            return pids
+        else:  # Unix-like (Linux, macOS)
+            result = (
+                subprocess.check_output(["lsof", "-i", f":{port}", "-t"], stderr=subprocess.DEVNULL).decode().strip()
+            )
+            return result.split("\n") if result else []
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return []
 
 
@@ -135,7 +157,6 @@ def obtain_certificate(domains: List[str], api_key: Optional[str] = None):
 
 
 def verify_environment(domains: List[str], api_key: Optional[str] = None) -> None:
-    print("[verify] certapi CLI ready")
     if api_key:
         print("[verify] Cloudflare API key detected; DNS-01 challenge available")
         if domains:
@@ -148,7 +169,7 @@ def verify_environment(domains: List[str], api_key: Optional[str] = None) -> Non
             else:
                 print("[verify] Cloudflare account appears to manage the provided domain(s)")
     else:
-        print("[verify] Cloudflare API key not detected; HTTP-01 challenge will be used")
+        print("[verify]  HTTP-01 challenge will be used")
         if not domains:
             print("[verify] No domains provided; skipping HTTP routing check")
             return

@@ -34,16 +34,33 @@ pip install certapi
 CertApi also ships with a CLI for quick verification and certificate issuance.
 
 ```bash
-## Crtapi's dependencies are already included in the python installation. This doesn't affect the system.
-sudo python3 -m pip  install certapi --break-system-packages 
- 
-# Use Cloudflare DNS-01 by providing API key or token
-export CLOUDFLARE_API_KEY="..."  
-sudo certapi obtain example.com
+## Certapi's dependencies are already included in the python installation. This doesn't affect the system.
+sudo python3 -m pip install certapi --break-system-packages
+```
 
+### 1. With HTTP Challenge
 
-# If you have already setup DNS.
-sudo certapi verify example.com  # Check that the DNS is setup correctly
-sudo certapi obtain example.com
+HTTP challenge requires you to have seup the DNS correctly. The ACME server will verify your domain by making an HTTP request.
 
+```bash
+# Verify environment and HTTP routing
+sudo certapi verify example.com www.example.com
+
+# Obtain a certificate (requires root for HTTP-01)
+sudo certapi obtain example.com www.example.com
+```
+
+### 2. With DNS Provider Key
+
+Using DNS-01 challenge with Cloudflare doesn't require the DNS to be setup. Set your Cloudflare API key as an environment variable.
+
+```bash
+# Set Cloudflare API key or token
+export CLOUDFLARE_API_KEY=...   # or CLOUDFLARE_API_TOKEN
+
+# Verify DNS configuration
+sudo certapi verify example.com
+
+# Obtain a certificate using DNS-01
+sudo certapi obtain example.com www.example.com
 ```

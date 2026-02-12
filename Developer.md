@@ -56,7 +56,7 @@ key_store = FileSystemKeyStore("db")
 
 
 # DNS-01 via Cloudflare (e.g. for wildcard certs or internal domains)
-dns_solver = CloudflareChallengeSolver(api_token="your-cloudflare-token")
+dns_solver = CloudflareChallengeSolver(api_key="your-cloudflare-token")
 
 # 3. Initialize and Setup AcmeCertManager
 # Create cert issuer with the default challenge solver
