@@ -22,3 +22,4 @@ from .challenge_solver import (
 )
 from .issuers import CertIssuer, SelfCertIssuer, AcmeCertIssuer
 from .client import CertManagerClient
+from .domain_batching import create_safe_domain_batches

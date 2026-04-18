@@ -1,5 +1,5 @@
 import time
-from typing import List, Literal, Optional, Tuple, Union, Dict
+from typing import Callable, List, Literal, Optional, Tuple, Union, Dict
 from datetime import datetime, timezone, timedelta
 
 from certapi import crypto
@@ -11,6 +11,7 @@ from ..http.types import CertificateResponse, IssuedCert
 from ..keystore.KeyStore import KeyStore
 from cryptography.x509 import Certificate, CertificateSigningRequest
 from ..crypto import Key, certs_to_pem, cert_to_pem, get_csr_hostnames
+from ..domain_batching import create_safe_domain_batches
 
 DEFAULT_RENEW_THRESHOLD_DAYS = 62
 
@@ -75,8 +76,59 @@ class AcmeCertManager:
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
     ) -> CertificateResponse:
+        return self._issue_certificate_internal(
+            hosts=hosts,
+            key_type=key_type,
+            expiry_days=expiry_days,
+            country=country,
+            state=state,
+            locality=locality,
+            organization=organization,
+            user_id=user_id,
+            renew_threshold_days=renew_threshold_days,
+            batch_generator=None,
+        )
 
-        if type(hosts) == str:
+    def issue_certificate_in_batches(
+        self,
+        hosts: Union[str, List[str]],
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
+        expiry_days: int = 90,
+        country: Optional[str] = None,
+        state: Optional[str] = None,
+        locality: Optional[str] = None,
+        organization: Optional[str] = None,
+        user_id: Optional[str] = None,
+        renew_threshold_days: Optional[int] = None,
+        batch_generator: Callable[[List[str]], List[List[str]]] = create_safe_domain_batches,
+    ) -> CertificateResponse:
+        return self._issue_certificate_internal(
+            hosts=hosts,
+            key_type=key_type,
+            expiry_days=expiry_days,
+            country=country,
+            state=state,
+            locality=locality,
+            organization=organization,
+            user_id=user_id,
+            renew_threshold_days=renew_threshold_days,
+            batch_generator=batch_generator,
+        )
+
+    def _issue_certificate_internal(
+        self,
+        hosts: Union[str, List[str]],
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
+        expiry_days: int = 90,
+        country: Optional[str] = None,
+        state: Optional[str] = None,
+        locality: Optional[str] = None,
+        organization: Optional[str] = None,
+        user_id: Optional[str] = None,
+        renew_threshold_days: Optional[int] = None,
+        batch_generator: Optional[Callable[[List[str]], List[List[str]]]] = None,
+    ) -> CertificateResponse:
+        if isinstance(hosts, str):
             hosts = [hosts]
 
         existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]] = {}
@@ -109,25 +161,30 @@ class AcmeCertManager:
                     print(f"Warning: No challenge solver found that supports domain: {host}. Skipping.")
 
             for store, domains_to_issue in domains_by_store.items():
-
-                private_key, fullchain_cert = self.cert_issuer.generate_key_and_cert_for_domains(
-                    domains_to_issue,
-                    key_type=key_type,
-                    expiry_days=expiry_days,
-                    country=country,
-                    state=state,
-                    locality=locality,
-                    organization=organization,
-                    user_id=user_id,
-                    challenge_solver=store,
+                issuance_batches = (
+                    batch_generator(domains_to_issue) if batch_generator is not None else [domains_to_issue]
                 )
+                for batch in issuance_batches:
+                    if not batch:
+                        continue
+                    private_key, fullchain_cert = self.cert_issuer.generate_key_and_cert_for_domains(
+                        batch,
+                        key_type=key_type,
+                        expiry_days=expiry_days,
+                        country=country,
+                        state=state,
+                        locality=locality,
+                        organization=organization,
+                        user_id=user_id,
+                        challenge_solver=store,
+                    )
 
-                if fullchain_cert:
-                    key_id = self.key_store.save_key(private_key, domains_to_issue[0])
-                    self.key_store.save_cert(key_id, fullchain_cert, domains_to_issue)
-                    issued_certs_list.append(IssuedCert(key=private_key, cert=fullchain_cert, domains=domains_to_issue))
-                else:
-                    print(f"Failed to issue certificate for domains: {domains_to_issue}")
+                    if fullchain_cert:
+                        key_id = self.key_store.save_key(private_key, batch[0])
+                        self.key_store.save_cert(key_id, fullchain_cert, batch)
+                        issued_certs_list.append(IssuedCert(key=private_key, cert=fullchain_cert, domains=batch))
+                    else:
+                        print(f"Failed to issue certificate for domains: {batch}")
 
             # self.cert_issuer.challenge_solver = original_challenge_solver # Restore original
             return createExistingResponse(existing, issued_certs_list)

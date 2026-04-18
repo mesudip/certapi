@@ -111,7 +111,7 @@ def _ensure_port_80_available() -> None:
             sys.exit(1)
 
 
-def obtain_certificate(domains: List[str], api_key: Optional[str] = None):
+def obtain_certificate(domains: List[str], api_key: Optional[str] = None, keystore_path: str = "/etc/ssl"):
     challenge_solver = None
     server = None
 
@@ -124,7 +124,6 @@ def obtain_certificate(domains: List[str], api_key: Optional[str] = None):
         print("Starting HTTP challenge server on port 80...")
         server, _ = _start_http_challenge_server(challenge_solver, port=80)
 
-    keystore_path = "/etc/ssl"
     key_store = FileSystemKeyStore(keystore_path)
     cert_issuer = AcmeCertIssuer.with_keystore(
         key_store,
@@ -140,7 +139,8 @@ def obtain_certificate(domains: List[str], api_key: Optional[str] = None):
 
         cert_chain = certs_from_pem(cert.encode("utf-8"))
         leaf_cert = cert_chain[0] if cert_chain else None
-        expiry = leaf_cert.not_valid_after.isoformat() if leaf_cert else "unknown"
+        expiry_dt = leaf_cert.not_valid_after_utc if leaf_cert else None
+        expiry = expiry_dt.isoformat() if expiry_dt else "unknown"
 
         key_path = os.path.join(key_store.keys_dir, f"{key_name}.key")
         cert_path = os.path.join(key_store.certs_dir, f"{key_name}.crt")
@@ -219,14 +219,60 @@ def verify_environment(domains: List[str], api_key: Optional[str] = None) -> Non
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="certapi")
-    subparsers = parser.add_subparsers(dest="command")
+    class HelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
+        pass
 
-    verify_parser = subparsers.add_parser("verify", help="Verify certapi installation and environment.")
-    verify_parser.add_argument("domains", nargs="*", help="Optional domain(s) to verify.")
+    parser = argparse.ArgumentParser(
+        prog="certapi",
+        formatter_class=HelpFormatter,
+        description=(
+            "Issue and verify ACME certificates.\n\n"
+            "Challenge mode selection:\n"
+            "- If CLOUDFLARE_API_KEY or CLOUDFLARE_API_TOKEN is set, DNS-01 is used.\n"
+            "- Otherwise HTTP-01 is used (requires binding to port 80)."
+        ),
+        epilog=(
+            "Cloudflare credentials are read from environment variables: "
+            "CLOUDFLARE_API_KEY or CLOUDFLARE_API_TOKEN.\n\n"
+            "Examples:\n"
+            "  certapi verify example.com\n"
+            "  certapi obtain --path ./certs example.com www.example.com\n"
+            "  CLOUDFLARE_API_TOKEN=<token> certapi obtain --path . example.com"
+        ),
+    )
+    subparsers = parser.add_subparsers(
+        dest="command",
+        title="commands",
+        metavar="{verify,obtain}",
+    )
 
-    obtain_parser = subparsers.add_parser("obtain", help="Obtain certificate for domains.")
-    obtain_parser.add_argument("domains", nargs="+", help="Domain(s) to obtain certificate for.")
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Verify certapi installation and challenge readiness.",
+        description=(
+            "Verify environment readiness.\n"
+            "- With Cloudflare credentials: checks DNS zone ownership for provided domains.\n"
+            "- Without credentials: checks local HTTP challenge serving/routing for domains."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    verify_parser.add_argument("domains", nargs="*", help="Optional domain(s) to validate.")
+
+    obtain_parser = subparsers.add_parser(
+        "obtain",
+        help="Issue a certificate for one or more domains.",
+        description=(
+            "Obtain a certificate and write key/cert files to the selected path.\n"
+            "When Cloudflare credentials are set, DNS-01 challenge is used."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    obtain_parser.add_argument("domains", nargs="+", help="Domain(s) to include in the certificate.")
+    obtain_parser.add_argument(
+        "--path",
+        default="/etc/ssl",
+        help="Directory where key/cert files will be written.",
+    )
 
     args = parser.parse_args()
 
@@ -236,7 +282,7 @@ def main():
         sys.exit(0)
     elif args.command == "obtain":
         api_key = _resolve_cloudflare_api_key()
-        obtain_certificate(args.domains, api_key=api_key)
+        obtain_certificate(args.domains, api_key=api_key, keystore_path=args.path)
     else:
         parser.print_help()
         sys.exit(1)
