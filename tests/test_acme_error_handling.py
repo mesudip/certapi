@@ -77,13 +77,11 @@ class TestAcmeNetworkErrorHandling:
     def test_network_errors(self, acme_client, mock_directory_response, error_side_effect, expected_type, expected_msg):
         """Test various network-related errors with parametrization"""
         with patch("certapi.acme.http.requests.request") as mock_request:
-            # First call succeeds (directory fetch), second call fails with side effect
+            # setup() directory succeeds, then register() POST fails all 3 attempts in http.request
             mock_request.side_effect = [
                 mock_directory_response,
                 error_side_effect,
-                mock_directory_response,
                 error_side_effect,
-                mock_directory_response,
                 error_side_effect,
             ]
 
@@ -92,7 +90,7 @@ class TestAcmeNetworkErrorHandling:
                 acme_client.register()
 
             error = exc_info.value
-            assert error.can_retry is True
+            assert error.can_retry is False
             assert expected_msg in error.message
             assert error.detail["errorType"] == expected_type
 
@@ -158,7 +156,11 @@ class TestAcmeHttpErrorHandling:
             error_response.request = Mock()
             error_response.request.url = "https://acme.example.com/api"
 
-            mock_request.side_effect = [mock_directory_response, error_response]
+            if status_code >= 500:
+                # 5xx is retried in http.request, so provide three failing POST responses
+                mock_request.side_effect = [mock_directory_response, error_response, error_response, error_response]
+            else:
+                mock_request.side_effect = [mock_directory_response, error_response]
 
             with pytest.raises(AcmeHttpError) as exc_info:
                 acme_client.setup()
@@ -180,7 +182,8 @@ class TestAcmeHttpErrorHandling:
             error_response.request = Mock()
             error_response.request.url = "https://acme.example.com/api"
 
-            mock_request.side_effect = [mock_directory_response, error_response]
+            # 502 is retried in http.request
+            mock_request.side_effect = [mock_directory_response, error_response, error_response, error_response]
 
             with pytest.raises(AcmeHttpError) as exc_info:
                 acme_client.setup()
@@ -439,6 +442,133 @@ class TestAcmeRetryLogic:
             # Should attempt: initial + 1 retry = 2 attempts total (plus directory)
             # So 3 calls total: directory + initial + retry
             assert mock_request.call_count >= 2
+
+    def test_network_unreachable_retries_with_2_second_delay(self, acme_client, mock_directory_response):
+        """Test that network unreachable errors use 2-second retry delay"""
+        with patch("certapi.acme.http.requests.request") as mock_request:
+            network_error = requests.exceptions.ConnectionError(
+                "HTTPSConnectionPool(host='acme-v02.api.letsencrypt.org', port=443): "
+                "Max retries exceeded with url: /acme/new-order "
+                "(Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x0>: "
+                "Failed to establish a new connection: [Errno 101] Network unreachable'))"
+            )
+
+            mock_request.side_effect = [
+                mock_directory_response,  # setup() directory
+                network_error,  # post() fail 1
+                network_error,  # post() fail 2
+                network_error,  # post() fail 3 -> raise
+            ]
+
+            with patch("time.sleep") as mock_sleep:
+                with pytest.raises(AcmeNetworkError):
+                    acme_client.setup()
+                    acme_client.register()
+
+                assert mock_sleep.call_count == 2
+                mock_sleep.assert_called_with(2)
+
+    def test_all_network_errors_use_2_second_delay(self, acme_client, mock_directory_response):
+        """Test that any network error uses 2-second retry delay"""
+        with patch("certapi.acme.http.requests.request") as mock_request:
+            network_error = requests.exceptions.ConnectionError("Connection failed")
+
+            mock_request.side_effect = [
+                mock_directory_response,  # setup() directory
+                network_error,  # post() fail 1
+                network_error,  # post() fail 2
+                network_error,  # post() fail 3 -> raise
+            ]
+
+            with patch("time.sleep") as mock_sleep:
+                with pytest.raises(AcmeNetworkError):
+                    acme_client.setup()
+                    acme_client.register()
+
+                assert mock_sleep.call_count == 2
+                mock_sleep.assert_called_with(2)
+
+    def test_network_error_retries_on_get_requests(self, acme_client, mock_directory_response):
+        """Test that network errors on GET requests are retried"""
+        with patch("certapi.acme.http.requests.request") as mock_request:
+            network_error = requests.exceptions.ConnectionError("Connection failed")
+            mock_request.side_effect = [
+                network_error,  # setup() GET fail 1
+                network_error,  # setup() GET fail 2
+                mock_directory_response,  # setup() GET success
+            ]
+
+            with patch("time.sleep") as mock_sleep:
+                acme_client.setup()
+
+                assert acme_client.directory is not None
+                assert mock_sleep.call_count == 2
+                mock_sleep.assert_called_with(2)
+
+    def test_5xx_retries_then_succeeds(self, acme_client, mock_directory_response):
+        """Test that 5xx responses are retried and can recover"""
+        with patch("certapi.acme.http.requests.request") as mock_request:
+            server_error = Mock()
+            server_error.status_code = 500
+            server_error.json.return_value = {
+                "type": "urn:ietf:params:acme:error:serverInternal",
+                "detail": "Internal error",
+            }
+            server_error.headers = {"Replay-Nonce": "test-nonce"}
+            server_error.request = Mock()
+            server_error.request.url = "https://acme.example.com/new-account"
+
+            success_response = Mock()
+            success_response.status_code = 201
+            success_response.json.return_value = {"status": "valid"}
+            success_response.headers = {
+                "Replay-Nonce": "nonce-789",
+                "location": "https://acme.example.com/account/123",
+            }
+
+            mock_request.side_effect = [
+                mock_directory_response,  # setup() directory
+                server_error,  # post() fail 1
+                server_error,  # post() fail 2
+                success_response,  # post() success on retry 3
+            ]
+
+            with patch("time.sleep") as mock_sleep:
+                acme_client.setup()
+                result = acme_client.register()
+
+                assert result.status_code == 201
+                assert mock_sleep.call_count == 2
+                mock_sleep.assert_called_with(2)
+
+    def test_5xx_retry_exhaustion_raises_once(self, acme_client, mock_directory_response):
+        """Test that 5xx retries are exhausted in HTTP layer without extra nested retries"""
+        with patch("certapi.acme.http.requests.request") as mock_request:
+            server_error = Mock()
+            server_error.status_code = 500
+            server_error.json.return_value = {
+                "type": "urn:ietf:params:acme:error:serverInternal",
+                "detail": "Internal error",
+            }
+            server_error.headers = {"Replay-Nonce": "test-nonce"}
+            server_error.request = Mock()
+            server_error.request.url = "https://acme.example.com/new-account"
+
+            mock_request.side_effect = [
+                mock_directory_response,  # setup() directory
+                server_error,  # post() fail 1
+                server_error,  # post() fail 2
+                server_error,  # post() fail 3 -> raise
+            ]
+
+            with patch("time.sleep") as mock_sleep:
+                with pytest.raises(AcmeHttpError):
+                    acme_client.setup()
+                    acme_client.register()
+
+                assert mock_sleep.call_count == 2
+                mock_sleep.assert_called_with(2)
+                assert mock_request.call_count == 4
 
     def test_retry_delay_is_2_seconds(self, acme_client, mock_directory_response):
         """Test that retry delay is 2 seconds"""

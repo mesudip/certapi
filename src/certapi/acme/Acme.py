@@ -22,6 +22,7 @@ class Acme:
 
     URL_STAGING = "https://acme-staging-v02.api.letsencrypt.org/directory"
     URL_PROD = "https://acme-v02.api.letsencrypt.org/directory"
+    MAX_RETRY_ATTEMPTS = 2
 
     def __init__(self, account_key: Key, url=URL_STAGING):
         self.account_key: Key = account_key
@@ -118,7 +119,7 @@ class Acme:
 
             response = post(step, url, json=payload, headers={"Content-Type": "application/jose+json"}, throw=throw)
         except AcmeError as e:
-            if e.can_retry and depth <= 1:
+            if e.can_retry and depth <= self.MAX_RETRY_ATTEMPTS - 1:
                 time.sleep(2)
                 return self._signed_req(url, req_payload, depth + 1, step, throw)
             else:
