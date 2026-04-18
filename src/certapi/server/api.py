@@ -97,6 +97,12 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
         default=False,
         help="Allow issuance to proceed if some domains fail verification",
     )
+    obtain_parser.add_argument(
+        "batch_domains",
+        type=inputs.boolean,
+        default=False,
+        help="Issue certificates in separate safe batches instead of one combined order",
+    )
 
     @api_ns.route("/obtain")
     class ObtainCert(Resource):
@@ -128,7 +134,12 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
                 if not hostnames:
                     return CertificateResponse().to_json()
 
-                data = cert_manager.issue_certificate(
+                issue_fn = (
+                    cert_manager.issue_certificate_in_batches
+                    if args.get("batch_domains")
+                    else cert_manager.issue_certificate
+                )
+                data = issue_fn(
                     hostnames,
                     key_type=args["key_type"],
                     expiry_days=args["expiry_days"],

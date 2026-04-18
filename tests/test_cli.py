@@ -54,8 +54,8 @@ class FakeAcmeCertIssuer:
 
 
 class FakeCert:
-    def __init__(self, not_valid_after):
-        self.not_valid_after = not_valid_after
+    def __init__(self, not_valid_after_utc):
+        self.not_valid_after_utc = not_valid_after_utc
 
 
 def test_is_root_true_false(monkeypatch):
@@ -365,9 +365,10 @@ def test_main_verify(monkeypatch):
 def test_main_obtain(monkeypatch):
     called = {}
 
-    def fake_obtain(domains, api_key=None):
+    def fake_obtain(domains, api_key=None, keystore_path="/etc/ssl"):
         called["domains"] = domains
         called["api_key"] = api_key
+        called["keystore_path"] = keystore_path
 
     monkeypatch.setattr(cli, "obtain_certificate", fake_obtain)
     monkeypatch.setattr(cli, "_resolve_cloudflare_api_key", lambda: None)
@@ -376,6 +377,25 @@ def test_main_obtain(monkeypatch):
     cli.main()
     assert called["domains"] == ["example.com"]
     assert called["api_key"] is None
+    assert called["keystore_path"] == "/etc/ssl"
+
+
+def test_main_obtain_custom_keystore(monkeypatch):
+    called = {}
+
+    def fake_obtain(domains, api_key=None, keystore_path="/etc/ssl"):
+        called["domains"] = domains
+        called["api_key"] = api_key
+        called["keystore_path"] = keystore_path
+
+    monkeypatch.setattr(cli, "obtain_certificate", fake_obtain)
+    monkeypatch.setattr(cli, "_resolve_cloudflare_api_key", lambda: None)
+    monkeypatch.setattr(cli.sys, "argv", ["certapi", "obtain", "--path", ".", "example.com"])
+
+    cli.main()
+    assert called["domains"] == ["example.com"]
+    assert called["api_key"] is None
+    assert called["keystore_path"] == "."
 
 
 def test_main_help(monkeypatch):

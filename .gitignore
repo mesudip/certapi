@@ -21,3 +21,4 @@ src/certapi.egg-info
 .venv
 .env
 test_db_temp/
+*.key

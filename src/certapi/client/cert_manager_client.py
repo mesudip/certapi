@@ -49,6 +49,7 @@ class CertManagerClient:
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
         skip_failing: bool = True,
+        batch_domains: bool = False,
     ) -> CertificateResponse:
         params = {
             "hostname": hosts if isinstance(hosts, str) else hosts,
@@ -68,6 +69,7 @@ class CertManagerClient:
         if renew_threshold_days is not None:
             params["renew_threshold_days"] = renew_threshold_days
         params["skip_failing"] = skip_failing
+        params["batch_domains"] = batch_domains
 
         data = self._get("/api/obtain", params=params)
         res = CertificateResponse.from_json(data)
