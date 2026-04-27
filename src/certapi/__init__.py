@@ -21,5 +21,5 @@ from .challenge_solver import (
     DigitalOceanChallengeSolver,
 )
 from .issuers import CertIssuer, SelfCertIssuer, AcmeCertIssuer
-from .client import CertManagerClient
+from .client import CertManagerClient, RenewalManager
 from .domain_batching import create_safe_domain_batches

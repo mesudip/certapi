@@ -22,7 +22,7 @@ class AcmeCertManager:
         key_store: KeyStore,
         cert_issuer: AcmeCertIssuer,
         challenge_solvers: List[ChallengeSolver] = [],
-        renew_threshold_days: int = DEFAULT_RENEW_THRESHOLD_DAYS,  # Renewal will be accepted if cert is valid for less than 75 days
+        renew_threshold_days: int = DEFAULT_RENEW_THRESHOLD_DAYS,
     ):
         self.key_store: KeyStore = key_store
         self.cert_issuer: AcmeCertIssuer = cert_issuer
@@ -65,6 +65,30 @@ class AcmeCertManager:
             return None
 
     def issue_certificate(
+        self,
+        hosts: Union[str, List[str]],
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
+        expiry_days: int = 90,
+        country: Optional[str] = None,
+        state: Optional[str] = None,
+        locality: Optional[str] = None,
+        organization: Optional[str] = None,
+        user_id: Optional[str] = None,
+        renew_threshold_days: Optional[int] = None,
+    ) -> CertificateResponse:
+        return self.obtain(
+            hosts=hosts,
+            key_type=key_type,
+            expiry_days=expiry_days,
+            country=country,
+            state=state,
+            locality=locality,
+            organization=organization,
+            user_id=user_id,
+            renew_threshold_days=renew_threshold_days,
+        )
+
+    def obtain(
         self,
         hosts: Union[str, List[str]],
         key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",

@@ -51,6 +51,34 @@ class CertManagerClient:
         skip_failing: bool = True,
         batch_domains: bool = False,
     ) -> CertificateResponse:
+        return self.obtain(
+            hosts=hosts,
+            key_type=key_type,
+            expiry_days=expiry_days,
+            country=country,
+            state=state,
+            locality=locality,
+            organization=organization,
+            user_id=user_id,
+            renew_threshold_days=renew_threshold_days,
+            skip_failing=skip_failing,
+            batch_domains=batch_domains,
+        )
+
+    def obtain(
+        self,
+        hosts: Union[str, List[str]],
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
+        expiry_days: int = 90,
+        country: Optional[str] = None,
+        state: Optional[str] = None,
+        locality: Optional[str] = None,
+        organization: Optional[str] = None,
+        user_id: Optional[str] = None,
+        renew_threshold_days: Optional[int] = None,
+        skip_failing: bool = True,
+        batch_domains: bool = False,
+    ) -> CertificateResponse:
         params = {
             "hostname": hosts if isinstance(hosts, str) else hosts,
             "key_type": key_type,
