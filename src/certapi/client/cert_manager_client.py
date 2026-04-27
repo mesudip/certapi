@@ -50,6 +50,7 @@ class CertManagerClient:
         renew_threshold_days: Optional[int] = None,
         skip_failing: bool = True,
         batch_domains: bool = False,
+        self_verify: bool = True,
     ) -> CertificateResponse:
         return self.obtain(
             hosts=hosts,
@@ -63,6 +64,7 @@ class CertManagerClient:
             renew_threshold_days=renew_threshold_days,
             skip_failing=skip_failing,
             batch_domains=batch_domains,
+            self_verify=self_verify,
         )
 
     def obtain(
@@ -78,6 +80,7 @@ class CertManagerClient:
         renew_threshold_days: Optional[int] = None,
         skip_failing: bool = True,
         batch_domains: bool = False,
+        self_verify: bool = True,
     ) -> CertificateResponse:
         params = {
             "hostname": hosts if isinstance(hosts, str) else hosts,
@@ -98,6 +101,7 @@ class CertManagerClient:
             params["renew_threshold_days"] = renew_threshold_days
         params["skip_failing"] = skip_failing
         params["batch_domains"] = batch_domains
+        params["self_verify"] = self_verify
 
         data = self._get("/api/obtain", params=params)
         res = CertificateResponse.from_json(data)

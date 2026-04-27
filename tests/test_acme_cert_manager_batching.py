@@ -22,6 +22,9 @@ class DummySolver:
     def supports_domain(self, _domain):
         return True
 
+    def supports_domain_strict(self, _domain):
+        return True
+
 
 class DummyIssuer:
     def __init__(self):
@@ -93,3 +96,34 @@ def test_issue_certificate_in_batches_uses_custom_batch_generator():
     ]
     assert len(response.issued) == 3
     assert [issued.domains for issued in response.issued] == issuer.calls
+
+
+def test_issue_certificate_self_verify_false_skips_strict_solver_check():
+    class StrictFailingSolver(DummySolver):
+        def supports_domain_strict(self, _domain):
+            return False
+
+    key_store = DummyKeyStore()
+    issuer = DummyIssuer()
+    solver = StrictFailingSolver()
+    manager = AcmeCertManager(key_store=key_store, cert_issuer=issuer, challenge_solvers=[solver])
+
+    manager.issue_certificate(hosts=["force.example.com"], self_verify=False)
+
+    assert issuer.calls == [["force.example.com"]]
+
+
+def test_issue_certificate_self_verify_true_uses_strict_solver_check():
+    class StrictFailingSolver(DummySolver):
+        def supports_domain_strict(self, _domain):
+            return False
+
+    key_store = DummyKeyStore()
+    issuer = DummyIssuer()
+    solver = StrictFailingSolver()
+    manager = AcmeCertManager(key_store=key_store, cert_issuer=issuer, challenge_solvers=[solver])
+
+    response = manager.issue_certificate(hosts=["force.example.com"])
+
+    assert issuer.calls == []
+    assert response.issued == []

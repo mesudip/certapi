@@ -75,6 +75,7 @@ class AcmeCertManager:
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
+        self_verify: bool = True,
     ) -> CertificateResponse:
         return self.obtain(
             hosts=hosts,
@@ -86,6 +87,7 @@ class AcmeCertManager:
             organization=organization,
             user_id=user_id,
             renew_threshold_days=renew_threshold_days,
+            self_verify=self_verify,
         )
 
     def obtain(
@@ -99,6 +101,7 @@ class AcmeCertManager:
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
+        self_verify: bool = True,
     ) -> CertificateResponse:
         return self._issue_certificate_internal(
             hosts=hosts,
@@ -111,6 +114,7 @@ class AcmeCertManager:
             user_id=user_id,
             renew_threshold_days=renew_threshold_days,
             batch_generator=None,
+            self_verify=self_verify,
         )
 
     def issue_certificate_in_batches(
@@ -125,6 +129,7 @@ class AcmeCertManager:
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
         batch_generator: Callable[[List[str]], List[List[str]]] = create_safe_domain_batches,
+        self_verify: bool = True,
     ) -> CertificateResponse:
         return self._issue_certificate_internal(
             hosts=hosts,
@@ -137,6 +142,7 @@ class AcmeCertManager:
             user_id=user_id,
             renew_threshold_days=renew_threshold_days,
             batch_generator=batch_generator,
+            self_verify=self_verify,
         )
 
     def _issue_certificate_internal(
@@ -151,6 +157,7 @@ class AcmeCertManager:
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
         batch_generator: Optional[Callable[[List[str]], List[List[str]]]] = None,
+        self_verify: bool = True,
     ) -> CertificateResponse:
         if isinstance(hosts, str):
             hosts = [hosts]
@@ -174,7 +181,12 @@ class AcmeCertManager:
             for host in missing:
                 found_store = None
                 for store in self.challenge_solvers:
-                    if store.supports_domain(host):
+                    supports_domain = (
+                        store.supports_domain_strict(host)
+                        if self_verify and hasattr(store, "supports_domain_strict")
+                        else store.supports_domain(host)
+                    )
+                    if supports_domain:
                         found_store = store
                         break
                 if found_store is not None:

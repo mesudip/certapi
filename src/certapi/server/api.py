@@ -103,6 +103,12 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
         default=False,
         help="Issue certificates in separate safe batches instead of one combined order",
     )
+    obtain_parser.add_argument(
+        "self_verify",
+        type=inputs.boolean,
+        default=True,
+        help="Verify local challenge reachability/ownership before attempting issuance",
+    )
 
     @api_ns.route("/obtain")
     class ObtainCert(Resource):
@@ -117,16 +123,18 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
             args = obtain_parser.parse_args()
             hostnames = args["hostname"]
             skip_failing = args.get("skip_failing", False)
+            self_verify = args.get("self_verify", True)
 
             with lock_manager:
-                verified_hostnames = []
-                for h in hostnames:
-                    # Find the first solver that supports this domain
-                    for solver in reversed(cert_manager.challenge_solvers):
-                        if solver.supports_domain_strict(h):
-                            verified_hostnames.append(h)
+                if self_verify:
+                    verified_hostnames = []
+                    for h in hostnames:
+                        # Find the first solver that supports and can verify this domain.
+                        for solver in reversed(cert_manager.challenge_solvers):
+                            if solver.supports_domain_strict(h):
+                                verified_hostnames.append(h)
 
-                hostnames = verified_hostnames
+                    hostnames = verified_hostnames
 
                 if not hostnames and not skip_failing:
                     api_ns.abort(400, message="None of the domains are owned by this machine or could be verified")
@@ -149,6 +157,7 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
                     organization=args["organization"],
                     user_id=args["user_id"],
                     renew_threshold_days=args.get("renew_threshold_days"),
+                    self_verify=False,
                 )
 
                 print(data)
