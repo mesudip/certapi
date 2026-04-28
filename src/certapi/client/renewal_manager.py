@@ -2,7 +2,7 @@ import os
 import threading
 import time
 from datetime import datetime, timezone, timedelta
-from typing import Callable, Dict, Optional, Set, Any, List
+from typing import Callable, Dict, Optional, Set, Any, List, Literal
 
 from certapi.crypto import Key, certs_from_pem
 from certapi.client.cert_manager_client import CertManagerClient
@@ -42,9 +42,27 @@ class RenewalManager:
         remote_poll_interval_seconds: int = 30,
         clock_fn: Optional[Callable[[], datetime]] = None,
         sleep_fn: Optional[Callable[[float], None]] = None,
+        key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
+        expiry_days: int = 90,
+        batch_domains: bool = False,
+        self_verify: bool = True,
+        country: Optional[str] = None,
+        state: Optional[str] = None,
+        locality: Optional[str] = None,
+        organization: Optional[str] = None,
+        user_id: Optional[str] = None,
     ):
         self.cert_manager_client = cert_manager_client
         self.sync_watch_domains = sync_watch_domains
+        self.key_type = key_type
+        self.expiry_days = expiry_days
+        self.batch_domains = batch_domains
+        self.self_verify = self_verify
+        self.country = country
+        self.state = state
+        self.locality = locality
+        self.organization = organization
+        self.user_id = user_id
         self.sleep_slack_seconds = sleep_slack_seconds
         self.max_sleep_seconds = max_sleep_seconds
         self.renew_retry_interval_seconds = renew_retry_interval_seconds
@@ -293,20 +311,24 @@ class RenewalManager:
 
         try:
             renew_threshold_days = self.cert_min_renew_threshold_secs // (24 * 3600)
-            obtain_fn = getattr(self.cert_manager_client, "obtain", None)
-            if callable(obtain_fn):
-                res = self._call_certificate_backend(
-                    obtain_fn,
-                    [domain],
-                    {"renew_threshold_days": renew_threshold_days, "skip_failing": False},
-                )
-            else:
-                # Backward compatibility for clients that only implement issue_certificate.
-                res = self._call_certificate_backend(
-                    self.cert_manager_client.issue_certificate,
-                    [domain],
-                    {"renew_threshold_days": renew_threshold_days},
-                )
+            obtain_options = {
+                "key_type": self.key_type,
+                "expiry_days": self.expiry_days,
+                "renew_threshold_days": renew_threshold_days,
+                "skip_failing": False,
+                "batch_domains": self.batch_domains,
+                "self_verify": self.self_verify,
+                "country": self.country,
+                "state": self.state,
+                "locality": self.locality,
+                "organization": self.organization,
+                "user_id": self.user_id,
+            }
+            res = self._call_certificate_backend(
+                self.cert_manager_client.obtain,
+                [domain],
+                obtain_options,
+            )
             if res is None:
                 return
             self._update_expiry_cache(res.issued + res.existing)

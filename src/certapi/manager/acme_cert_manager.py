@@ -75,6 +75,8 @@ class AcmeCertManager:
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
+        skip_failing: bool = True,
+        batch_domains: bool = False,
         self_verify: bool = True,
     ) -> CertificateResponse:
         return self.obtain(
@@ -87,6 +89,8 @@ class AcmeCertManager:
             organization=organization,
             user_id=user_id,
             renew_threshold_days=renew_threshold_days,
+            skip_failing=skip_failing,
+            batch_domains=batch_domains,
             self_verify=self_verify,
         )
 
@@ -101,6 +105,8 @@ class AcmeCertManager:
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
+        skip_failing: bool = True,
+        batch_domains: bool = False,
         self_verify: bool = True,
     ) -> CertificateResponse:
         return self._issue_certificate_internal(
@@ -113,7 +119,8 @@ class AcmeCertManager:
             organization=organization,
             user_id=user_id,
             renew_threshold_days=renew_threshold_days,
-            batch_generator=None,
+            batch_generator=create_safe_domain_batches if batch_domains else None,
+            skip_failing=skip_failing,
             self_verify=self_verify,
         )
 
@@ -129,6 +136,7 @@ class AcmeCertManager:
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
         batch_generator: Callable[[List[str]], List[List[str]]] = create_safe_domain_batches,
+        skip_failing: bool = True,
         self_verify: bool = True,
     ) -> CertificateResponse:
         return self._issue_certificate_internal(
@@ -142,6 +150,7 @@ class AcmeCertManager:
             user_id=user_id,
             renew_threshold_days=renew_threshold_days,
             batch_generator=batch_generator,
+            skip_failing=skip_failing,
             self_verify=self_verify,
         )
 
@@ -157,6 +166,7 @@ class AcmeCertManager:
         user_id: Optional[str] = None,
         renew_threshold_days: Optional[int] = None,
         batch_generator: Optional[Callable[[List[str]], List[List[str]]]] = None,
+        skip_failing: bool = True,
         self_verify: bool = True,
     ) -> CertificateResponse:
         if isinstance(hosts, str):
@@ -195,6 +205,9 @@ class AcmeCertManager:
                     domains_by_store[found_store].append(host)
                 else:
                     print(f"Warning: No challenge solver found that supports domain: {host}. Skipping.")
+
+            if len(domains_by_store) == 0 and not skip_failing:
+                raise ValueError("None of the domains are owned by this machine or could be verified")
 
             for store, domains_to_issue in domains_by_store.items():
                 issuance_batches = (

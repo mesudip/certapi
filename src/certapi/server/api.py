@@ -122,43 +122,25 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
         def get(self):
             args = obtain_parser.parse_args()
             hostnames = args["hostname"]
-            skip_failing = args.get("skip_failing", False)
-            self_verify = args.get("self_verify", True)
 
             with lock_manager:
-                if self_verify:
-                    verified_hostnames = []
-                    for h in hostnames:
-                        # Find the first solver that supports and can verify this domain.
-                        for solver in reversed(cert_manager.challenge_solvers):
-                            if solver.supports_domain_strict(h):
-                                verified_hostnames.append(h)
-
-                    hostnames = verified_hostnames
-
-                if not hostnames and not skip_failing:
-                    api_ns.abort(400, message="None of the domains are owned by this machine or could be verified")
-
-                if not hostnames:
-                    return CertificateResponse().to_json()
-
-                issue_fn = (
-                    cert_manager.issue_certificate_in_batches
-                    if args.get("batch_domains")
-                    else cert_manager.issue_certificate
-                )
-                data = issue_fn(
-                    hostnames,
-                    key_type=args["key_type"],
-                    expiry_days=args["expiry_days"],
-                    country=args["country"],
-                    state=args["state"],
-                    locality=args["locality"],
-                    organization=args["organization"],
-                    user_id=args["user_id"],
-                    renew_threshold_days=args.get("renew_threshold_days"),
-                    self_verify=False,
-                )
+                try:
+                    data = cert_manager.obtain(
+                        hostnames,
+                        key_type=args["key_type"],
+                        expiry_days=args["expiry_days"],
+                        country=args["country"],
+                        state=args["state"],
+                        locality=args["locality"],
+                        organization=args["organization"],
+                        user_id=args["user_id"],
+                        renew_threshold_days=args.get("renew_threshold_days"),
+                        skip_failing=args.get("skip_failing", False),
+                        batch_domains=args.get("batch_domains", False),
+                        self_verify=args.get("self_verify", True),
+                    )
+                except ValueError as e:
+                    api_ns.abort(400, message=str(e))
 
                 print(data)
                 if data:

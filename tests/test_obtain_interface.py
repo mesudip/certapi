@@ -4,6 +4,7 @@ from flask import Flask
 from flask_restx import Api, Namespace
 
 from certapi.client.cert_manager_client import CertManagerClient
+from certapi.domain_batching import create_safe_domain_batches
 from certapi.http.types import CertificateResponse
 from certapi.manager.acme_cert_manager import AcmeCertManager
 from certapi.server.api import create_api_resources
@@ -29,6 +30,8 @@ def test_acme_cert_manager_issue_certificate_delegates_to_obtain(monkeypatch):
         organization="Org",
         user_id="u1",
         renew_threshold_days=25,
+        skip_failing=False,
+        batch_domains=True,
         self_verify=False,
     )
 
@@ -42,6 +45,8 @@ def test_acme_cert_manager_issue_certificate_delegates_to_obtain(monkeypatch):
     assert captured["organization"] == "Org"
     assert captured["user_id"] == "u1"
     assert captured["renew_threshold_days"] == 25
+    assert captured["skip_failing"] is False
+    assert captured["batch_domains"] is True
     assert captured["self_verify"] is False
 
 
@@ -60,6 +65,8 @@ def test_acme_cert_manager_obtain_uses_internal_issue_path(monkeypatch):
         key_type="ecdsa",
         expiry_days=90,
         renew_threshold_days=30,
+        skip_failing=False,
+        batch_domains=True,
         self_verify=False,
     )
 
@@ -68,7 +75,8 @@ def test_acme_cert_manager_obtain_uses_internal_issue_path(monkeypatch):
     assert captured["key_type"] == "ecdsa"
     assert captured["expiry_days"] == 90
     assert captured["renew_threshold_days"] == 30
-    assert captured["batch_generator"] is None
+    assert captured["batch_generator"] is create_safe_domain_batches
+    assert captured["skip_failing"] is False
     assert captured["self_verify"] is False
 
 
@@ -157,7 +165,7 @@ def test_remote_obtain_self_verify_false_skips_server_prefilter():
         def __init__(self):
             self.calls = []
 
-        def issue_certificate(self, hosts, **kwargs):
+        def obtain(self, hosts, **kwargs):
             self.calls.append({"hosts": hosts, "kwargs": kwargs})
             return CertificateResponse()
 
@@ -171,7 +179,7 @@ def test_remote_obtain_self_verify_false_skips_server_prefilter():
     assert manager.calls[0]["kwargs"]["self_verify"] is False
 
 
-def test_remote_obtain_self_verify_true_keeps_server_prefilter():
+def test_remote_obtain_self_verify_true_delegates_strict_failure_to_manager():
     app = Flask(__name__)
     api = Api(app)
     api_ns = Namespace("api")
@@ -184,8 +192,10 @@ def test_remote_obtain_self_verify_true_keeps_server_prefilter():
     class Manager:
         challenge_solvers = [Solver()]
 
-        def issue_certificate(self, hosts, **kwargs):
-            raise AssertionError("unverified host should not reach manager")
+        def obtain(self, hosts, **kwargs):
+            assert hosts == ["force.example.com"]
+            assert kwargs["self_verify"] is True
+            raise ValueError("None of the domains are owned by this machine or could be verified")
 
     create_api_resources(api_ns, Manager())
 

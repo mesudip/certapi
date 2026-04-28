@@ -23,7 +23,7 @@ class DummyClient:
     def set_handler(self, domain, handler):
         self._handlers[domain] = handler
 
-    def issue_certificate(self, hosts, **kwargs):
+    def obtain(self, hosts, **kwargs):
         host = hosts[0] if isinstance(hosts, list) else hosts
         self.calls.append({"host": host, "kwargs": kwargs})
         handler = self._handlers.get(host)
@@ -35,6 +35,9 @@ class DummyClient:
             return handler(host, kwargs)
         return handler
 
+    def issue_certificate(self, hosts, **kwargs):
+        return self.obtain(hosts, **kwargs)
+
 
 class DummyClientWithObtain(DummyClient):
     def __init__(self):
@@ -45,12 +48,12 @@ class DummyClientWithObtain(DummyClient):
     def obtain(self, hosts, **kwargs):
         host = hosts[0] if isinstance(hosts, list) else hosts
         self.obtain_calls.append({"host": host, "kwargs": kwargs})
-        return super().issue_certificate(hosts, **kwargs)
+        return super().obtain(hosts, **kwargs)
 
     def issue_certificate(self, hosts, **kwargs):
         host = hosts[0] if isinstance(hosts, list) else hosts
         self.issue_calls.append({"host": host, "kwargs": kwargs})
-        return super().issue_certificate(hosts, **kwargs)
+        return super().obtain(hosts, **kwargs)
 
 
 class DummyRemoteClient(CertManagerClient):
@@ -406,6 +409,34 @@ def test_renewal_manager_prefers_obtain_when_available():
 
     assert len(client.obtain_calls) == 1
     assert len(client.issue_calls) == 0
+
+
+def test_renewal_manager_passes_typed_obtain_options_into_renewal_calls():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    cert = _make_cert_pem("batch.example.com", now, valid_for_days=60)
+    client.set_handler(
+        "batch.example.com",
+        CertificateResponse(issued=[IssuedCert(cert=cert, domains=["batch.example.com"])], existing=[]),
+    )
+
+    mgr = RenewalManager(
+        client,
+        renew_threshold_days=30,
+        clock_fn=lambda: now,
+        batch_domains=True,
+        self_verify=False,
+        organization="certapi-tests",
+    )
+    mgr.set_watch_domains(["batch.example.com"])
+    mgr.trigger_now()
+
+    assert len(client.calls) == 1
+    assert client.calls[0]["kwargs"]["batch_domains"] is True
+    assert client.calls[0]["kwargs"]["self_verify"] is False
+    assert client.calls[0]["kwargs"]["skip_failing"] is False
+    assert client.calls[0]["kwargs"]["renew_threshold_days"] == 30
+    assert client.calls[0]["kwargs"]["organization"] == "certapi-tests"
 
 
 def test_local_keystore_seed_prevents_remote_call_when_fresh():

@@ -98,6 +98,26 @@ def test_issue_certificate_in_batches_uses_custom_batch_generator():
     assert [issued.domains for issued in response.issued] == issuer.calls
 
 
+def test_obtain_batch_domains_uses_safe_batches():
+    key_store = DummyKeyStore()
+    issuer = DummyIssuer()
+    solver = DummySolver()
+    manager = AcmeCertManager(key_store=key_store, cert_issuer=issuer, challenge_solvers=[solver])
+
+    domains = [
+        "x.abc.def.ghi.example.com",
+        "root.example.com",
+    ]
+    response = manager.obtain(hosts=domains, batch_domains=True)
+
+    assert issuer.calls == [
+        ["root.example.com"],
+        ["x.abc.def"],
+        ["ghi.example.com"],
+    ]
+    assert len(response.issued) == 3
+
+
 def test_issue_certificate_self_verify_false_skips_strict_solver_check():
     class StrictFailingSolver(DummySolver):
         def supports_domain_strict(self, _domain):
@@ -127,3 +147,23 @@ def test_issue_certificate_self_verify_true_uses_strict_solver_check():
 
     assert issuer.calls == []
     assert response.issued == []
+
+
+def test_obtain_self_verify_true_raises_when_all_domains_fail_and_skip_failing_false():
+    class StrictFailingSolver(DummySolver):
+        def supports_domain_strict(self, _domain):
+            return False
+
+    key_store = DummyKeyStore()
+    issuer = DummyIssuer()
+    solver = StrictFailingSolver()
+    manager = AcmeCertManager(key_store=key_store, cert_issuer=issuer, challenge_solvers=[solver])
+
+    try:
+        manager.obtain(hosts=["force.example.com"], skip_failing=False)
+    except ValueError as e:
+        assert "None of the domains are owned" in str(e)
+    else:
+        raise AssertionError("expected strict obtain failure")
+
+    assert issuer.calls == []
