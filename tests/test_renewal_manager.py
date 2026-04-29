@@ -325,7 +325,7 @@ def test_retry_deferral_suppresses_immediate_retry_and_force_when_blacklisted():
     assert len(client.calls) == 1
 
 
-def test_watch_domain_replacement_drops_unwatched_cache_and_sync_callback_replaces():
+def test_watch_domain_replacement_drops_unwatched_cache_and_external_update_processes_new_set():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyClient()
     cert_c = _make_cert_pem("c.example.com", now, valid_for_days=60)
@@ -334,12 +334,7 @@ def test_watch_domain_replacement_drops_unwatched_cache_and_sync_callback_replac
         CertificateResponse(issued=[IssuedCert(cert=cert_c, domains=["c.example.com"])], existing=[]),
     )
 
-    mgr = None
-
-    def sync_watch_domains():
-        mgr.update_watch_domains(["c.example.com"])
-
-    mgr = RenewalManager(client, sync_watch_domains=sync_watch_domains, clock_fn=lambda: now)
+    mgr = RenewalManager(client, clock_fn=lambda: now)
     mgr.update_watch_domains(["a.example.com", "b.example.com"])
     with mgr._lock:
         mgr._cache["a.example.com"] = now + timedelta(days=20)
@@ -349,8 +344,9 @@ def test_watch_domain_replacement_drops_unwatched_cache_and_sync_callback_replac
     with mgr._lock:
         assert "b.example.com" not in mgr._cache
 
-    # callback replaces watch set with c.example.com before renewal pass.
-    mgr.trigger_now()
+    # Integrations can publish new domain state directly, outside the timed
+    # renewal callback path.
+    mgr.update_watch_domains(["c.example.com"])
     state = mgr.get_state()
     assert state["watched_domains"] == ["c.example.com"]
     with mgr._lock:
@@ -527,21 +523,6 @@ def test_new_domain_failure_selfsigns_and_blacklists():
     assert len(client.calls) == 2
 
 
-def test_sync_callback_exception_sets_state_error():
-    now = datetime(2026, 1, 1, tzinfo=UTC)
-    mgr = RenewalManager(
-        DummyClient(),
-        sync_watch_domains=lambda: (_ for _ in ()).throw(RuntimeError("sync failed")),
-        clock_fn=lambda: now,
-    )
-
-    mgr.trigger_now()
-
-    state = mgr.get_state()
-    assert state["last_error_message"] == "sync failed"
-    assert state["last_error_timestamp"] == now.isoformat()
-
-
 def test_update_watch_domains_blocks_until_running_worker_processes_domains():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     started = threading.Event()
@@ -572,7 +553,7 @@ def test_update_watch_domains_blocks_until_running_worker_processes_domains():
     assert client.calls[0]["host"] == "requested.example.com"
 
 
-def test_update_watch_domains_from_cycle_thread_does_not_request_extra_cycle():
+def test_renewal_cycle_invokes_callback_and_callback_updates_domains():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyClient()
     cert = _make_cert_pem("from-callback.example.com", now, valid_for_days=60)
@@ -582,26 +563,22 @@ def test_update_watch_domains_from_cycle_thread_does_not_request_extra_cycle():
     )
     mgr = None
 
-    def sync_watch_domains():
+    def renewal_callback():
         mgr.update_watch_domains(["from-callback.example.com"])
 
-    mgr = RenewalManager(client, sync_watch_domains=sync_watch_domains, clock_fn=lambda: now)
-    with mgr._lock:
-        mgr._running = True
-
-    mgr._run_cycle(force=False)
+    mgr = RenewalManager(client, renewal_callback=renewal_callback, clock_fn=lambda: now)
+    mgr.trigger_now()
 
     with mgr._lock:
+        assert mgr._watch_domains == {"from-callback.example.com"}
+        assert "from-callback.example.com" in mgr._cache
         assert mgr._force_trigger is False
         assert mgr._cycle_requested is False
     assert len(client.calls) == 1
 
 
-def test_running_trigger_now_blocks_until_synced_cycle_finishes():
+def test_running_trigger_now_blocks_until_callback_update_finishes():
     now = datetime(2026, 1, 1, tzinfo=UTC)
-    sync_count = 0
-    sync_ready = threading.Event()
-    sync_enabled = threading.Event()
     obtain_started = threading.Event()
     release_obtain = threading.Event()
     client = DummyClient()
@@ -613,20 +590,13 @@ def test_running_trigger_now_blocks_until_synced_cycle_finishes():
         release_obtain.wait(timeout=2)
         return CertificateResponse(issued=[IssuedCert(cert=cert, domains=[host])], existing=[])
 
-    def sync_watch_domains():
-        nonlocal sync_count
-        sync_count += 1
-        sync_ready.set()
-        if sync_enabled.is_set():
-            mgr.update_watch_domains(["blocking.example.com"])
+    def renewal_callback():
+        mgr.update_watch_domains(["blocking.example.com"])
 
     client.set_handler("blocking.example.com", slow_handler)
-    mgr = RenewalManager(client, sync_watch_domains=sync_watch_domains, clock_fn=lambda: now)
+    mgr = RenewalManager(client, renewal_callback=renewal_callback, clock_fn=lambda: now)
 
     mgr.start()
-    assert sync_ready.wait(timeout=2)
-
-    sync_enabled.set()
     trigger_thread = threading.Thread(target=mgr.trigger_now)
     trigger_thread.start()
 
@@ -637,7 +607,6 @@ def test_running_trigger_now_blocks_until_synced_cycle_finishes():
 
     mgr.stop()
     assert not trigger_thread.is_alive()
-    assert sync_count >= 2
     assert len(client.calls) == 1
     assert client.calls[0]["host"] == "blocking.example.com"
 
