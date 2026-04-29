@@ -158,7 +158,7 @@ def test_default_threshold_and_min_floor(monkeypatch):
 def test_sleep_computation_slack_and_cap():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     mgr = RenewalManager(DummyClient(), renew_threshold_days=30)
-    mgr.set_watch_domains(["example.com"])
+    mgr.update_watch_domains(["example.com"])
 
     with mgr._lock:
         mgr._cache["example.com"] = now + timedelta(days=60)
@@ -187,8 +187,8 @@ def test_existing_cert_failure_sets_threshold_plus_24h_retry():
         renew_threshold_days=30,
         clock_fn=lambda: clock["now"],
     )
-    mgr.set_watch_domains(["example.com"])
     with mgr._lock:
+        mgr._watch_domains = {"example.com"}
         mgr._cache["example.com"] = now - timedelta(hours=1)
 
     mgr.trigger_now()
@@ -222,7 +222,7 @@ def test_existing_cert_failure_does_not_selfsign():
     client.set_handler("existing.example.com", RuntimeError("renew failed"))
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["existing.example.com"])
+    mgr.update_watch_domains(["existing.example.com"])
     with mgr._lock:
         mgr._cache["existing.example.com"] = now - timedelta(hours=1)
 
@@ -255,9 +255,7 @@ def test_expired_local_cert_failure_keeps_existing_cert_and_defers_retry():
     client.set_handler("expired.example.com", RuntimeError("renew failed"))
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["expired.example.com"])
-
-    mgr.trigger_now()
+    mgr.update_watch_domains(["expired.example.com"])
 
     expected = now + timedelta(seconds=mgr.update_threshold_secs + mgr.renew_retry_interval_seconds)
     with mgr._lock:
@@ -293,8 +291,7 @@ def test_expired_sqlite_cert_failure_does_not_seed_selfsigned_as_fresh():
         client.set_handler("sqlite-expired.example.com", RuntimeError("renew failed"))
 
         mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-        mgr.set_watch_domains(["sqlite-expired.example.com"])
-        mgr.trigger_now()
+        mgr.update_watch_domains(["sqlite-expired.example.com"])
 
         with mgr._lock:
             assert "sqlite-expired.example.com" in mgr._cache
@@ -312,7 +309,7 @@ def test_retry_deferral_suppresses_immediate_retry_and_force_when_blacklisted():
     client.set_handler("retry.example.com", RuntimeError("renew failed"))
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: clock["now"])
-    mgr.set_watch_domains(["retry.example.com"])
+    mgr.update_watch_domains(["retry.example.com"])
     with mgr._lock:
         mgr._cache["retry.example.com"] = now - timedelta(minutes=1)
 
@@ -340,15 +337,15 @@ def test_watch_domain_replacement_drops_unwatched_cache_and_sync_callback_replac
     mgr = None
 
     def sync_watch_domains():
-        mgr.set_watch_domains(["c.example.com"])
+        mgr.update_watch_domains(["c.example.com"])
 
     mgr = RenewalManager(client, sync_watch_domains=sync_watch_domains, clock_fn=lambda: now)
-    mgr.set_watch_domains(["a.example.com", "b.example.com"])
+    mgr.update_watch_domains(["a.example.com", "b.example.com"])
     with mgr._lock:
         mgr._cache["a.example.com"] = now + timedelta(days=20)
         mgr._cache["b.example.com"] = now + timedelta(days=20)
 
-    mgr.set_watch_domains(["a.example.com"])
+    mgr.update_watch_domains(["a.example.com"])
     with mgr._lock:
         assert "b.example.com" not in mgr._cache
 
@@ -378,7 +375,7 @@ def test_bootstrap_and_cache_update_from_issued_and_existing():
     )
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["issued.example.com", "existing.example.com"])
+    mgr.update_watch_domains(["issued.example.com", "existing.example.com"])
 
     # No cache initially; both should be obtained immediately to bootstrap.
     mgr._run_cycle(force=False)
@@ -404,8 +401,7 @@ def test_renewal_manager_prefers_obtain_when_available():
     )
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["prefer-obtain.example.com"])
-    mgr._run_cycle(force=False)
+    mgr.update_watch_domains(["prefer-obtain.example.com"])
 
     assert len(client.obtain_calls) == 1
     assert len(client.issue_calls) == 0
@@ -428,8 +424,7 @@ def test_renewal_manager_passes_typed_obtain_options_into_renewal_calls():
         self_verify=False,
         organization="certapi-tests",
     )
-    mgr.set_watch_domains(["batch.example.com"])
-    mgr.trigger_now()
+    mgr.update_watch_domains(["batch.example.com"])
 
     assert len(client.calls) == 1
     assert client.calls[0]["kwargs"]["batch_domains"] is True
@@ -461,8 +456,7 @@ def test_local_keystore_seed_prevents_remote_call_when_fresh():
     client.key_store.set_domain_cert("fresh.example.com", [cert])
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["fresh.example.com"])
-    mgr._run_cycle(force=False)
+    mgr.update_watch_domains(["fresh.example.com"])
 
     with mgr._lock:
         assert "fresh.example.com" in mgr._cache
@@ -496,8 +490,7 @@ def test_local_keystore_seed_stale_cert_still_renews():
     )
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["stale.example.com"])
-    mgr._run_cycle(force=False)
+    mgr.update_watch_domains(["stale.example.com"])
 
     assert len(client.calls) == 1
     with mgr._lock:
@@ -517,9 +510,8 @@ def test_new_domain_failure_selfsigns_and_blacklists():
         blacklist_duration_seconds=180,
         clock_fn=lambda: clock["now"],
     )
-    mgr.set_watch_domains(["new.example.com"])
+    mgr.update_watch_domains(["new.example.com"])
 
-    mgr._run_cycle(force=False)
     assert len(client.calls) == 1
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "new.example.com.selfsigned"
@@ -550,19 +542,37 @@ def test_sync_callback_exception_sets_state_error():
     assert state["last_error_timestamp"] == now.isoformat()
 
 
-def test_set_watch_domains_external_update_requests_followup_cycle_when_running():
+def test_update_watch_domains_blocks_until_running_worker_processes_domains():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    started = threading.Event()
+    release = threading.Event()
     client = DummyClient()
-    mgr = RenewalManager(client)
-    with mgr._lock:
-        mgr._running = True
+    cert = _make_cert_pem("requested.example.com", now, valid_for_days=90)
 
-    mgr.set_watch_domains(["requested.example.com"])
+    def slow_handler(host, kwargs):
+        started.set()
+        release.wait(timeout=2)
+        return CertificateResponse(issued=[IssuedCert(cert=cert, domains=[host])], existing=[])
 
-    with mgr._lock:
-        assert mgr._force_trigger is True
+    client.set_handler("requested.example.com", slow_handler)
+    mgr = RenewalManager(client, clock_fn=lambda: now)
+    mgr.start()
+
+    update_thread = threading.Thread(target=lambda: mgr.update_watch_domains(["requested.example.com"]))
+    update_thread.start()
+
+    assert started.wait(timeout=2)
+    assert update_thread.is_alive()
+    release.set()
+    update_thread.join(timeout=2)
+    mgr.stop()
+
+    assert not update_thread.is_alive()
+    assert len(client.calls) == 1
+    assert client.calls[0]["host"] == "requested.example.com"
 
 
-def test_set_watch_domains_from_cycle_thread_does_not_request_extra_cycle():
+def test_update_watch_domains_from_cycle_thread_does_not_request_extra_cycle():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyClient()
     cert = _make_cert_pem("from-callback.example.com", now, valid_for_days=60)
@@ -573,7 +583,7 @@ def test_set_watch_domains_from_cycle_thread_does_not_request_extra_cycle():
     mgr = None
 
     def sync_watch_domains():
-        mgr.set_watch_domains(["from-callback.example.com"])
+        mgr.update_watch_domains(["from-callback.example.com"])
 
     mgr = RenewalManager(client, sync_watch_domains=sync_watch_domains, clock_fn=lambda: now)
     with mgr._lock:
@@ -583,7 +593,53 @@ def test_set_watch_domains_from_cycle_thread_does_not_request_extra_cycle():
 
     with mgr._lock:
         assert mgr._force_trigger is False
+        assert mgr._cycle_requested is False
     assert len(client.calls) == 1
+
+
+def test_running_trigger_now_blocks_until_synced_cycle_finishes():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    sync_count = 0
+    sync_ready = threading.Event()
+    sync_enabled = threading.Event()
+    obtain_started = threading.Event()
+    release_obtain = threading.Event()
+    client = DummyClient()
+    cert = _make_cert_pem("blocking.example.com", now, valid_for_days=90)
+    mgr = None
+
+    def slow_handler(host, kwargs):
+        obtain_started.set()
+        release_obtain.wait(timeout=2)
+        return CertificateResponse(issued=[IssuedCert(cert=cert, domains=[host])], existing=[])
+
+    def sync_watch_domains():
+        nonlocal sync_count
+        sync_count += 1
+        sync_ready.set()
+        if sync_enabled.is_set():
+            mgr.update_watch_domains(["blocking.example.com"])
+
+    client.set_handler("blocking.example.com", slow_handler)
+    mgr = RenewalManager(client, sync_watch_domains=sync_watch_domains, clock_fn=lambda: now)
+
+    mgr.start()
+    assert sync_ready.wait(timeout=2)
+
+    sync_enabled.set()
+    trigger_thread = threading.Thread(target=mgr.trigger_now)
+    trigger_thread.start()
+
+    assert obtain_started.wait(timeout=2)
+    assert trigger_thread.is_alive()
+    release_obtain.set()
+    trigger_thread.join(timeout=2)
+
+    mgr.stop()
+    assert not trigger_thread.is_alive()
+    assert sync_count >= 2
+    assert len(client.calls) == 1
+    assert client.calls[0]["host"] == "blocking.example.com"
 
 
 def test_singleflight_suppresses_concurrent_manual_cycles():
@@ -600,7 +656,8 @@ def test_singleflight_suppresses_concurrent_manual_cycles():
 
     client.set_handler("singleflight.example.com", slow_handler)
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["singleflight.example.com"])
+    with mgr._lock:
+        mgr._watch_domains = {"singleflight.example.com"}
 
     first = threading.Thread(target=lambda: mgr.trigger_now())
     first.start()
@@ -630,7 +687,8 @@ def test_remote_certapi_polling_prints_waiting_message(capsys):
         remote_poll_interval_seconds=0.01,
         clock_fn=lambda: now,
     )
-    mgr.set_watch_domains(["remote.example.com"])
+    with mgr._lock:
+        mgr._watch_domains = {"remote.example.com"}
 
     thread = threading.Thread(target=lambda: mgr.trigger_now())
     thread.start()
@@ -651,9 +709,7 @@ def test_remote_renewal_disables_skip_failing_so_unverified_domain_fails():
     client.key_store = DummyKeyStore()
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
-    mgr.set_watch_domains(["missing.example.com"])
-
-    mgr.trigger_now()
+    mgr.update_watch_domains(["missing.example.com"])
 
     assert len(client.obtain_calls) == 1
     assert client.obtain_calls[0]["kwargs"]["skip_failing"] is False
@@ -668,7 +724,8 @@ def test_stop_does_not_wait_for_hung_remote_request_thread():
     release = threading.Event()
     client = DummyRemoteClient(started=started, release=release)
     mgr = RenewalManager(client, remote_poll_interval_seconds=0.01)
-    mgr.set_watch_domains(["hung.example.com"])
+    with mgr._lock:
+        mgr._watch_domains = {"hung.example.com"}
 
     mgr.start()
     assert started.wait(timeout=2)

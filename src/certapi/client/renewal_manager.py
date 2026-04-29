@@ -12,7 +12,15 @@ from certapi.manager.acme_cert_manager import DEFAULT_RENEW_THRESHOLD_DAYS
 
 class RenewalManager:
     """
-    Background certificate refresh manager.
+    Keep certificates fresh for a changing set of watched domains.
+
+    RenewalManager can run as a background worker with :meth:`start`, while
+    callers publish the complete desired domain set through
+    :meth:`update_watch_domains`. Publishing a domain set is synchronous: the call
+    returns after certapi has processed the set and attempted any due
+    obtain/renew work. Each renewal pass first calls the optional
+    ``sync_watch_domains`` callback so integrations can republish the latest
+    domain list before certapi decides what to obtain or renew.
 
     Algorithm:
     - Maintain a watched domain set and cache each domain's certificate expiry.
@@ -27,6 +35,14 @@ class RenewalManager:
     - On failure for renewal, where a cached or local certificate exists, keep reusing
       that existing certificate even if it is expired, defer the next retry, and do not
       replace it with a self-signed certificate.
+
+    The manager keeps an in-memory expiry cache, bootstraps that cache from the
+    backend keystore when possible, renews missing or soon-expiring
+    certificates, and records failures in :meth:`get_state`. New domains that
+    fail issuance receive a short-lived retry blacklist and, when the backend
+    exposes a keystore, a local self-signed fallback certificate. Renewal
+    failures for domains with an existing certificate keep using that
+    certificate and schedule a later retry.
     """
 
     def __init__(
@@ -52,6 +68,50 @@ class RenewalManager:
         organization: Optional[str] = None,
         user_id: Optional[str] = None,
     ):
+        """
+        Create a renewal manager for a certificate backend.
+
+        Args:
+            cert_manager_client: Backend object with an ``obtain(domains,
+                **kwargs)`` method. Local managers and ``CertManagerClient`` are
+                both supported.
+            sync_watch_domains: Optional callback invoked at the start of each
+                renewal pass. The callback should call :meth:`update_watch_domains`
+                with the latest desired domain list. Calls made from this
+                callback only update the in-progress cycle and do not start a
+                nested renewal pass.
+            renew_threshold_days: Renew certificates when they expire within
+                this many days. Defaults to ``CERT_RENEW_THRESHOLD_DAYS`` or the
+                certapi default.
+            min_renew_threshold_days: Lower bound for renewal attempts, used to
+                avoid renewing too close to expiry even when a smaller threshold
+                is configured.
+            sleep_slack_seconds: Extra delay added after the calculated next
+                renewal time to avoid waking exactly on the threshold boundary.
+            max_sleep_seconds: Maximum time the background worker sleeps between
+                checks.
+            renew_retry_interval_seconds: Delay before retrying renewal for a
+                domain that already has a local certificate.
+            blacklist_duration_seconds: Delay before retrying issuance for a
+                domain that had no usable local certificate.
+            remote_poll_interval_seconds: Poll interval while waiting for remote
+                ``CertManagerClient`` requests.
+            clock_fn: Optional clock override for deterministic tests.
+            sleep_fn: Optional sleep override for deterministic tests.
+            key_type: Private key type requested from the backend.
+            expiry_days: Requested certificate lifetime when the backend
+                supports it.
+            batch_domains: Forwarded to the backend to enable domain batching.
+            self_verify: Forwarded to the backend to enable or disable
+                ownership self-verification.
+            country: Optional subject country for issued or fallback certs.
+            state: Optional subject state for issued or fallback certs.
+            locality: Optional subject locality for issued or fallback certs.
+            organization: Optional subject organization for issued or fallback
+                certs.
+            user_id: Optional subject/user identifier for issued or fallback
+                certs.
+        """
         self.cert_manager_client = cert_manager_client
         self.sync_watch_domains = sync_watch_domains
         self.key_type = key_type
@@ -89,34 +149,73 @@ class RenewalManager:
         self._lock = threading.Condition()
         self._thread: Optional[threading.Thread] = None
         self._running = False
+        self._cycle_requested = False
         self._force_trigger = False
         self._cycle_running = False
         self._cycle_thread_id: Optional[int] = None
+        self._cycle_generation = 0
         self._blacklist: Dict[str, datetime] = {}
         self._last_error_message: Optional[str] = None
         self._last_error_timestamp: Optional[datetime] = None
         self._self_signer: Optional[SelfCertIssuer] = None
 
-    def set_watch_domains(self, domains: List[str]):
+    def update_watch_domains(self, domains: List[str]):
+        """
+        Replace the complete set of domains and process it before returning.
+
+        Empty values are ignored. Cache and blacklist entries for domains no
+        longer being watched are dropped.
+
+        When called outside an active renewal cycle, this method immediately
+        runs or wakes a renewal pass and blocks until certapi has attempted any
+        due obtain/renew work for the published set. When called from
+        ``sync_watch_domains`` during a renewal cycle, it only updates the set
+        being processed and returns immediately to avoid recursive cycles.
+        """
         new_watch_set = {x for x in domains if x}
         with self._lock:
             self._watch_domains = new_watch_set
             self._cache = {d: expiry for d, expiry in self._cache.items() if d in self._watch_domains}
             self._blacklist = {d: exp for d, exp in self._blacklist.items() if d in self._watch_domains}
-            if self._running and self._cycle_thread_id != threading.get_ident():
-                self._force_trigger = True
+            if self._cycle_thread_id == threading.get_ident():
+                self._lock.notify_all()
+                return
+            if self._running:
+                target_generation = self._cycle_generation + (2 if self._cycle_running else 1)
+                self._cycle_requested = True
+                self._lock.notify_all()
+                while self._running and self._cycle_generation < target_generation:
+                    self._lock.wait()
+                return
             self._lock.notify_all()
 
+        self._run_cycle(force=False)
+
     def start(self):
+        """
+        Start the background renewal worker.
+
+        The worker immediately performs a forced renewal pass, then sleeps until
+        the next watched certificate approaches the renewal threshold or until
+        another thread publishes a new set with :meth:`update_watch_domains`.
+        Calling ``start`` while already running is a no-op.
+        """
         with self._lock:
             if self._running:
                 return
             self._running = True
-            self._force_trigger = True
+            self._cycle_requested = True
             self._thread = threading.Thread(target=self._worker, name="CertApi-RenewalManager", daemon=True)
             self._thread.start()
 
     def stop(self):
+        """
+        Stop the background renewal worker and wait briefly for it to exit.
+
+        In-flight remote certificate requests run in daemon helper threads and
+        are not waited on indefinitely; the manager stops scheduling new work
+        and joins the worker thread for up to two seconds.
+        """
         thread = None
         with self._lock:
             self._running = False
@@ -127,14 +226,43 @@ class RenewalManager:
             thread.join(timeout=2)
 
     def trigger_now(self):
+        """
+        Run a renewal pass immediately.
+
+        When the background worker is not running, this method performs the
+        renewal pass in the caller's thread and returns after it completes. When
+        the worker is running, this method wakes it and blocks until the
+        requested renewal pass has completed.
+
+        Most integrations should call :meth:`update_watch_domains` instead. This
+        method is for forcing a pass without changing the watched domain set.
+
+        If called from inside the renewal cycle itself, the method only requests
+        a follow-up pass and returns immediately to avoid deadlock.
+        """
         with self._lock:
             if self._running:
+                if self._cycle_thread_id == threading.get_ident():
+                    self._force_trigger = True
+                    self._lock.notify_all()
+                    return
+                target_generation = self._cycle_generation + (2 if self._cycle_running else 1)
                 self._force_trigger = True
                 self._lock.notify_all()
+                while self._running and self._cycle_generation < target_generation:
+                    self._lock.wait()
                 return
         self._run_cycle(force=True)
 
     def get_state(self) -> Dict[str, Any]:
+        """
+        Return a snapshot of renewal-manager state for diagnostics.
+
+        The returned dictionary includes watched domains, cache size, active
+        blacklisted domains, next cached expiry time, whether the background
+        worker is running, and the most recent error message/timestamp recorded
+        by the manager.
+        """
         with self._lock:
             next_renewal_time = min(self._cache.values()).isoformat() if self._cache else None
             return {
@@ -157,6 +285,7 @@ class RenewalManager:
                 if not self._running:
                     return
                 force = self._force_trigger
+                self._cycle_requested = False
                 self._force_trigger = False
 
             attempt_count = self._run_cycle(force=force)
@@ -164,7 +293,7 @@ class RenewalManager:
             with self._lock:
                 if not self._running:
                     return
-                if self._force_trigger:
+                if self._force_trigger or self._cycle_requested:
                     continue
                 wait_seconds = self._compute_wait_seconds(self.clock_fn())
 
@@ -233,6 +362,7 @@ class RenewalManager:
             with self._lock:
                 self._cycle_running = False
                 self._cycle_thread_id = None
+                self._cycle_generation += 1
                 self._lock.notify_all()
 
     def _run_cycle_body(self, force: bool = False) -> int:
