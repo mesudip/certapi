@@ -36,19 +36,6 @@ def would_trigger(labels: list[str], blocked: set[str]) -> bool:
     return False
 
 
-def split_domain_to_safe_groups(domain: str, blocked_labels: list[str] | None = None) -> list[list[str]]:
-    """
-    Split labels into contiguous chunks of at most 3 labels.
-    This mirrors the "3 labels are always safe for this specific LE heuristic"
-    invariant, but these label groups are not used directly as issuance domains.
-    """
-    labels = _split_labels(domain)
-    n = len(labels)
-    if n == 0:
-        return []
-    return [labels[i : i + 3] for i in range(0, n, 3)]
-
-
 def create_safe_domain_batches(domains: list[str], blocked_labels: list[str] | None = None) -> list[list[str]]:
     """
     Create compact issuance batches without any blocked-label list assumptions.
@@ -74,8 +61,7 @@ def create_safe_domain_batches(domains: list[str], blocked_labels: list[str] | N
             compact_batch.append(normalized)
             continue
 
-        for i in range(0, len(labels), 3):
-            singleton_batches.append([".".join(labels[i : i + 3])])
+        singleton_batches.append([normalized])
 
     if compact_batch:
         return [compact_batch, *singleton_batches]

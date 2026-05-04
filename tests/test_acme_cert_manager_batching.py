@@ -1,4 +1,4 @@
-from certapi.domain_batching import create_safe_domain_batches, split_domain_to_safe_groups, would_trigger
+from certapi.domain_batching import create_safe_domain_batches, would_trigger
 from certapi.manager.acme_cert_manager import AcmeCertManager
 
 
@@ -42,14 +42,6 @@ def test_would_trigger_exact_rule():
     assert would_trigger(["x", "abc", "abc", "example", "com"], blocked) is True
 
 
-def test_split_domain_to_safe_groups_greedy():
-    groups = split_domain_to_safe_groups(
-        "x.abc.def.ghi.example.com",
-        blocked_labels=["abc", "def", "ghi"],
-    )
-    assert groups == [["x", "abc", "def"], ["ghi", "example", "com"]]
-
-
 def test_create_safe_domain_batches_compacts_non_triggering_domains():
     domains = ["x.example.com", "y.example.com", "y.example.com"]
     assert create_safe_domain_batches(domains) == [["x.example.com", "y.example.com"]]
@@ -91,10 +83,9 @@ def test_issue_certificate_in_batches_uses_custom_batch_generator():
 
     assert issuer.calls == [
         ["root.example.com"],
-        ["x.abc.def"],
-        ["ghi.example.com"],
+        ["x.abc.def.ghi.example.com"],
     ]
-    assert len(response.issued) == 3
+    assert len(response.issued) == 2
     assert [issued.domains for issued in response.issued] == issuer.calls
 
 
@@ -112,10 +103,9 @@ def test_obtain_batch_domains_uses_safe_batches():
 
     assert issuer.calls == [
         ["root.example.com"],
-        ["x.abc.def"],
-        ["ghi.example.com"],
+        ["x.abc.def.ghi.example.com"],
     ]
-    assert len(response.issued) == 3
+    assert len(response.issued) == 2
 
 
 def test_issue_certificate_self_verify_false_skips_strict_solver_check():
