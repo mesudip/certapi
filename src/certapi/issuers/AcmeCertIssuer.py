@@ -95,7 +95,7 @@ class AcmeCertIssuer(CertIssuer):
                     return order.get_certificate()
                 return None
             elif order.status == "processing":
-                return obtain_cert()
+                return obtain_cert(count - 1)
             return None  # TODO: error throwing here
 
         return obtain_cert()

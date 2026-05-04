@@ -25,7 +25,7 @@ class DummyClient:
 
     def obtain(self, hosts, **kwargs):
         host = hosts[0] if isinstance(hosts, list) else hosts
-        self.calls.append({"host": host, "kwargs": kwargs})
+        self.calls.append({"host": host, "hosts": hosts, "kwargs": kwargs})
         handler = self._handlers.get(host)
         if handler is None:
             return CertificateResponse()
@@ -47,12 +47,12 @@ class DummyClientWithObtain(DummyClient):
 
     def obtain(self, hosts, **kwargs):
         host = hosts[0] if isinstance(hosts, list) else hosts
-        self.obtain_calls.append({"host": host, "kwargs": kwargs})
+        self.obtain_calls.append({"host": host, "hosts": hosts, "kwargs": kwargs})
         return super().obtain(hosts, **kwargs)
 
     def issue_certificate(self, hosts, **kwargs):
         host = hosts[0] if isinstance(hosts, list) else hosts
-        self.issue_calls.append({"host": host, "kwargs": kwargs})
+        self.issue_calls.append({"host": host, "hosts": hosts, "kwargs": kwargs})
         return super().obtain(hosts, **kwargs)
 
 
@@ -702,3 +702,16 @@ def test_stop_does_not_wait_for_hung_remote_request_thread():
 
     assert not mgr._thread.is_alive()
     release.set()
+
+
+def test_renewal_manager_batches_due_domains():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClientWithObtain()
+    client.set_handler("domain1.com", CertificateResponse())
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now, batch_domains=True)
+    mgr.update_watch_domains(["domain1.com", "domain2.com"])
+
+    assert len(client.obtain_calls) == 1
+    assert "domain1.com" in client.obtain_calls[0]["hosts"]
+    assert "domain2.com" in client.obtain_calls[0]["hosts"]

@@ -1,5 +1,5 @@
 ## Library has only 2 requirements
-cryptography
+cryptography>=39.0.0
 requests
 
 ## Requirements for docker-api image

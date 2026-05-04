@@ -419,8 +419,8 @@ class RenewalManager:
             if (expiry - now).total_seconds() < due_window:
                 due_domains.append(domain)
 
-        for domain in due_domains:
-            self._renew_domain(domain, now)
+        if due_domains:
+            self._renew_domains(due_domains, now)
 
         return len(due_domains)
 
@@ -463,10 +463,12 @@ class RenewalManager:
                     self._cache[domain] = expiry
             self._lock.notify_all()
 
-    def _renew_domain(self, domain: str, now: datetime):
-        domain_had_cached_entry = False
+    def _renew_domains(self, domains: List[str], now: datetime):
+        domains_with_cached_entries = []
         with self._lock:
-            domain_had_cached_entry = domain in self._cache
+            for domain in domains:
+                if domain in self._cache:
+                    domains_with_cached_entries.append(domain)
 
         try:
             renew_threshold_days = self.cert_min_renew_threshold_secs // (24 * 3600)
@@ -475,7 +477,7 @@ class RenewalManager:
                 "expiry_days": self.expiry_days,
                 "renew_threshold_days": renew_threshold_days,
                 "skip_failing": False,
-                "batch_domains": self.batch_domains,
+                "batch_domains": True,
                 "self_verify": self.self_verify,
                 "country": self.country,
                 "state": self.state,
@@ -485,7 +487,7 @@ class RenewalManager:
             }
             res = self._call_certificate_backend(
                 self.cert_manager_client.obtain,
-                [domain],
+                domains,
                 obtain_options,
             )
             if res is None:
@@ -493,11 +495,12 @@ class RenewalManager:
             self._update_expiry_cache(res.issued + res.existing)
         except Exception as e:
             self._set_error(e)
-            self._add_to_blacklist(domain, now)
-            if domain_had_cached_entry or self._has_local_certificate(domain):
-                self._schedule_existing_certificate_retry(domain, now)
-            else:
-                self._register_self_signed(domain)
+            for domain in domains:
+                self._add_to_blacklist(domain, now)
+                if domain in domains_with_cached_entries or self._has_local_certificate(domain):
+                    self._schedule_existing_certificate_retry(domain, now)
+                else:
+                    self._register_self_signed(domain)
 
     def _schedule_existing_certificate_retry(self, domain: str, now: datetime):
         retry_interval_seconds = min(self.renew_retry_interval_seconds, 24 * 3600)
