@@ -476,7 +476,8 @@ class RenewalManager:
                 "key_type": self.key_type,
                 "expiry_days": self.expiry_days,
                 "renew_threshold_days": renew_threshold_days,
-                "skip_failing": False,
+                # Renewal should obtain whatever can be issued, then self-sign unresolved domains.
+                "skip_failing": True,
                 "batch_domains": True,
                 "self_verify": self.self_verify,
                 "country": self.country,
@@ -492,7 +493,16 @@ class RenewalManager:
             )
             if res is None:
                 return
-            self._update_expiry_cache(res.issued + res.existing)
+            certs = res.issued + res.existing
+            self._update_expiry_cache(certs)
+            covered_domains = self._covered_domains_from_response(certs)
+            unresolved_domains = [domain for domain in domains if domain not in covered_domains]
+            for domain in unresolved_domains:
+                self._add_to_blacklist(domain, now)
+                if domain in domains_with_cached_entries or self._has_local_certificate(domain):
+                    self._schedule_existing_certificate_retry(domain, now)
+                else:
+                    self._register_self_signed(domain)
         except Exception as e:
             self._set_error(e)
             for domain in domains:
@@ -562,6 +572,14 @@ class RenewalManager:
 
             self._cache = {d: exp for d, exp in self._cache.items() if d in self._watch_domains}
             self._lock.notify_all()
+
+    def _covered_domains_from_response(self, certs) -> Set[str]:
+        covered: Set[str] = set()
+        for cert in certs:
+            for domain in cert.domains:
+                if domain:
+                    covered.add(domain)
+        return covered
 
     def _add_to_blacklist(self, domain: str, now: datetime):
         with self._lock:

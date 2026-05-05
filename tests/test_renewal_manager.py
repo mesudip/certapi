@@ -425,7 +425,7 @@ def test_renewal_manager_passes_typed_obtain_options_into_renewal_calls():
     assert len(client.calls) == 1
     assert client.calls[0]["kwargs"]["batch_domains"] is True
     assert client.calls[0]["kwargs"]["self_verify"] is False
-    assert client.calls[0]["kwargs"]["skip_failing"] is False
+    assert client.calls[0]["kwargs"]["skip_failing"] is True
     assert client.calls[0]["kwargs"]["renew_threshold_days"] == 30
     assert client.calls[0]["kwargs"]["organization"] == "certapi-tests"
 
@@ -521,6 +521,25 @@ def test_new_domain_failure_selfsigns_and_blacklists():
     clock["now"] = now + timedelta(seconds=181)
     mgr._run_cycle(force=False)
     assert len(client.calls) == 2
+
+
+def test_partial_renewal_success_selfsigns_uncovered_domains():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    client.key_store = DummyKeyStore()
+    ok_cert = _make_cert_pem("ok.example.com", now, valid_for_days=60)
+    client.set_handler(
+        "ok.example.com",
+        CertificateResponse(issued=[IssuedCert(cert=ok_cert, domains=["ok.example.com"])], existing=[]),
+    )
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    mgr._renew_domains(["ok.example.com", "missing.example.com"], now)
+
+    with mgr._lock:
+        assert "ok.example.com" in mgr._cache
+    assert len(client.key_store.saved_certs) == 1
+    assert client.key_store.saved_certs[0][2] == "missing.example.com.selfsigned"
 
 
 def test_update_watch_domains_blocks_until_running_worker_processes_domains():
@@ -672,7 +691,7 @@ def test_remote_certapi_polling_prints_waiting_message(capsys):
     assert len(client.obtain_calls) == 1
 
 
-def test_remote_renewal_disables_skip_failing_so_unverified_domain_fails():
+def test_remote_renewal_uses_skip_failing_and_selfsigns_unresolved_domain():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyRemoteSkipFailingClient()
     client.key_store = DummyKeyStore()
@@ -681,9 +700,9 @@ def test_remote_renewal_disables_skip_failing_so_unverified_domain_fails():
     mgr.update_watch_domains(["missing.example.com"])
 
     assert len(client.obtain_calls) == 1
-    assert client.obtain_calls[0]["kwargs"]["skip_failing"] is False
+    assert client.obtain_calls[0]["kwargs"]["skip_failing"] is True
     assert "missing.example.com" in mgr.get_state()["blacklisted_domains"]
-    assert "None of the domains are owned" in mgr.get_state()["last_error_message"]
+    assert mgr.get_state()["last_error_message"] is None
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "missing.example.com.selfsigned"
 
