@@ -53,6 +53,12 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
 
     lock_manager = RenewalLockManager(queue_size=renew_queue_size)
 
+    @api_ns.route("/health")
+    class Health(Resource):
+        @api_ns.doc("health")
+        def get(self):
+            return {"status": "ok"}
+
     # Models for documentation
     issued_cert_model = api_ns.model(
         "IssuedCertData",

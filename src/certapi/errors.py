@@ -7,7 +7,7 @@ class CertApiException(Exception):
     """
 
     def __init__(self, message: str, detail: dict = None, step: str = None):
-        super().__init__(message)
+        Exception.__init__(self, message)
         self.message = message
         self.detail = detail if detail is not None else {}
         self.step = step

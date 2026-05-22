@@ -1,41 +1,118 @@
 import requests
 from typing import List, Union, Dict, Optional, Any, Literal
 from cryptography import x509
+from certapi.errors import CertApiException, HttpError, NetworkError
 from certapi.http.types import CertificateResponse, IssuedCert
 from certapi.keystore.KeyStore import KeyStore
 from certapi.crypto import Key
 
 
 class CertManagerClient:
-    def __init__(self, base_url: str, key_store: Optional[KeyStore] = None):
-        self.base_url = base_url
+    def __init__(self, base_url: str, key_store: Optional[KeyStore] = None, timeout: int = 15):
+        self.base_url = base_url.rstrip("/")
         self.key_store = key_store
+        self.timeout = timeout
+
+    def _url(self, path: str) -> str:
+        return f"{self.base_url}/{path.lstrip('/')}"
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+        data: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> requests.Response:
+        url = self._url(path)
+        try:
+            response = requests.request(
+                method,
+                url,
+                params=params,
+                json=json_data,
+                data=data,
+                headers=headers,
+                timeout=self.timeout,
+            )
+        except requests.exceptions.Timeout as e:
+            raise NetworkError(
+                request=e.request,
+                message=f"CertAPI request timed out: {method} {url}",
+                detail={"method": method, "url": url, "errorType": e.__class__.__name__, "message": str(e)},
+                step="CertAPI client request",
+            ) from e
+        except requests.exceptions.ConnectionError as e:
+            raise NetworkError(
+                request=e.request,
+                message=f"CertAPI server is unreachable: {method} {url}",
+                detail={"method": method, "url": url, "errorType": e.__class__.__name__, "message": str(e)},
+                step="CertAPI client request",
+            ) from e
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(
+                request=e.request,
+                message=f"CertAPI network request failed: {method} {url}",
+                detail={"method": method, "url": url, "errorType": e.__class__.__name__, "message": str(e)},
+                step="CertAPI client request",
+            ) from e
+
+        if not 200 <= response.status_code < 300:
+            detail = self._response_detail(response)
+            raise HttpError(
+                response=response,
+                message=f"CertAPI returned HTTP {response.status_code}: {method} {url}",
+                detail=detail,
+                step="CertAPI client request",
+            )
+
+        return response
+
+    def _response_detail(self, response: requests.Response) -> Dict[str, Any]:
+        try:
+            body = response.json()
+        except ValueError:
+            body = response.text[:2000]
+
+        return {
+            "statusCode": response.status_code,
+            "url": response.url,
+            "method": response.request.method if response.request else None,
+            "body": body,
+        }
+
+    def _json_response(self, response: requests.Response) -> Any:
+        try:
+            return response.json()
+        except ValueError as e:
+            raise CertApiException(
+                "CertAPI returned a successful response that was not valid JSON",
+                detail=self._response_detail(response),
+                step="CertAPI client response parsing",
+            ) from e
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        response = requests.get(f"{self.base_url}{path}", params=params)
-        response.raise_for_status()
-        return response.json()
+        response = self._request("GET", path, params=params)
+        return self._json_response(response)
 
     def _post(
         self, path: str, data: Optional[Union[Dict[str, Any], str]] = None, headers: Optional[Dict[str, str]] = None
     ) -> Any:
-        response = requests.post(
-            f"{self.base_url}{path}",
-            json=data if isinstance(data, dict) else None,
+        response = self._request(
+            "POST",
+            path,
+            json_data=data if isinstance(data, dict) else None,
             data=data if isinstance(data, str) else None,
             headers=headers,
         )
-        response.raise_for_status()
-        return response.json()
+        return self._json_response(response)
 
     def setup(self):
         """
         Check connection to the cert manager server.
         """
-        try:
-            self._get("/keys")
-        except Exception as e:
-            print(f"Warning: CertManagerClient could not connect to {self.base_url}: {e}")
+        return self._get("/api/health")
 
     def issue_certificate(
         self,
@@ -126,10 +203,9 @@ class CertManagerClient:
         else:
             csr_pem = csr
 
-        response = requests.post(
-            f"{self.base_url}/api/sign_csr", data=csr_pem, headers={"Content-Type": "application/x-pem-file"}
+        response = self._request(
+            "POST", "/api/sign_csr", data=csr_pem, headers={"Content-Type": "application/x-pem-file"}
         )
-        response.raise_for_status()
         return response.text
 
     def list_keys(self) -> List[Dict[str, str]]:

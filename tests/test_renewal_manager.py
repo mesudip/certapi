@@ -9,6 +9,7 @@ from cryptography import x509
 from certapi.client import RenewalManager
 from certapi.client.cert_manager_client import CertManagerClient
 from certapi.crypto.crypto import cert_to_pem
+from certapi.errors import NetworkError
 from certapi.http.types import CertificateResponse, IssuedCert
 from certapi.keystore.SqliteKeyStore import SqliteKeyStore
 from certapi.manager.acme_cert_manager import DEFAULT_RENEW_THRESHOLD_DAYS
@@ -89,6 +90,7 @@ class DummyKeyStore:
         self._domain_map = {}
         self._keys_by_name = {}
         self._keys_by_id = {}
+        self._certs_by_id = {}
         self.saved_keys = []
         self.saved_certs = []
         self._seq = 0
@@ -98,6 +100,9 @@ class DummyKeyStore:
 
     def find_key_and_cert_by_domain(self, domain):
         return self._domain_map.get(domain)
+
+    def find_key_and_cert_by_cert_id(self, id):
+        return self._certs_by_id.get(id)
 
     def save_key(self, key, name):
         self._seq += 1
@@ -114,6 +119,8 @@ class DummyKeyStore:
 
     def save_cert(self, private_key_id, cert, domains, name=None):
         self.saved_certs.append((private_key_id, domains, name, cert))
+        if name is not None:
+            self._certs_by_id[name] = (private_key_id, self._keys_by_id.get(private_key_id), [cert])
         return "saved-cert-id"
 
 
@@ -361,14 +368,12 @@ def test_bootstrap_and_cache_update_from_issued_and_existing():
     cert_issued = _make_cert_pem("issued.example.com", now, valid_for_days=65)
     cert_existing = _make_cert_pem("existing.example.com", now, valid_for_days=55)
 
-    client.set_handler(
-        "issued.example.com",
-        CertificateResponse(issued=[IssuedCert(cert=cert_issued, domains=["issued.example.com"])], existing=[]),
+    batched_response = CertificateResponse(
+        issued=[IssuedCert(cert=cert_issued, domains=["issued.example.com"])],
+        existing=[IssuedCert(cert=cert_existing, domains=["existing.example.com"])],
     )
-    client.set_handler(
-        "existing.example.com",
-        CertificateResponse(existing=[IssuedCert(cert=cert_existing, domains=["existing.example.com"])], issued=[]),
-    )
+    client.set_handler("issued.example.com", batched_response)
+    client.set_handler("existing.example.com", batched_response)
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
     mgr.update_watch_domains(["issued.example.com", "existing.example.com"])
@@ -379,9 +384,8 @@ def test_bootstrap_and_cache_update_from_issued_and_existing():
     with mgr._lock:
         assert "issued.example.com" in mgr._cache
         assert "existing.example.com" in mgr._cache
-    assert len(client.calls) == 2
-    for call in client.calls:
-        assert call["kwargs"]["renew_threshold_days"] == (mgr.cert_min_renew_threshold_secs // (24 * 3600))
+    assert len(client.calls) == 1
+    assert client.calls[0]["kwargs"]["renew_threshold_days"] == (mgr.cert_min_renew_threshold_secs // (24 * 3600))
 
 
 def test_renewal_manager_prefers_obtain_when_available():
@@ -493,7 +497,7 @@ def test_local_keystore_seed_stale_cert_still_renews():
         assert "stale.example.com" in mgr._cache
 
 
-def test_new_domain_failure_selfsigns_and_blacklists():
+def test_new_domain_failure_selfsigns_and_blacklists(capsys):
     now = datetime(2026, 1, 1, tzinfo=UTC)
     clock = {"now": now}
     client = DummyClient()
@@ -511,6 +515,8 @@ def test_new_domain_failure_selfsigns_and_blacklists():
     assert len(client.calls) == 1
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "new.example.com.selfsigned"
+    output = capsys.readouterr().out
+    assert "[Cert API Client] Using self-signed certificate: new.example.com.selfsigned for new.example.com" in output
 
     # Blacklist should suppress immediate retry.
     mgr._run_cycle(force=False)
@@ -523,7 +529,25 @@ def test_new_domain_failure_selfsigns_and_blacklists():
     assert len(client.calls) == 2
 
 
-def test_partial_renewal_success_selfsigns_uncovered_domains():
+def test_selfsigned_registration_rewrites_missing_cert_when_key_exists(capsys):
+    client = DummyClient()
+    client.key_store = DummyKeyStore()
+    self_signed_name = "partial.example.com.selfsigned"
+    client.key_store._keys_by_name[self_signed_name] = Key.generate("ecdsa")
+
+    mgr = RenewalManager(client)
+    mgr._register_self_signed("partial.example.com")
+
+    assert len(client.key_store.saved_certs) == 1
+    assert client.key_store.saved_certs[0][2] == self_signed_name
+    output = capsys.readouterr().out
+    assert (
+        "[Cert API Client] Using self-signed certificate: partial.example.com.selfsigned for partial.example.com"
+        in output
+    )
+
+
+def test_partial_renewal_success_selfsigns_uncovered_domains(capsys):
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyClient()
     client.key_store = DummyKeyStore()
@@ -534,12 +558,20 @@ def test_partial_renewal_success_selfsigns_uncovered_domains():
     )
 
     mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    with mgr._lock:
+        mgr._watch_domains = {"ok.example.com", "missing.example.com"}
     mgr._renew_domains(["ok.example.com", "missing.example.com"], now)
 
     with mgr._lock:
         assert "ok.example.com" in mgr._cache
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "missing.example.com.selfsigned"
+    output = capsys.readouterr().out
+    assert "[Cert API Client] Issued certificates: ok.example.com" in output
+    assert (
+        "[Cert API Client] Using self-signed certificate: missing.example.com.selfsigned for missing.example.com"
+        in output
+    )
 
 
 def test_update_watch_domains_blocks_until_running_worker_processes_domains():
@@ -705,6 +737,26 @@ def test_remote_renewal_uses_skip_failing_and_selfsigns_unresolved_domain():
     assert mgr.get_state()["last_error_message"] is None
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "missing.example.com.selfsigned"
+
+
+def test_remote_renewal_logs_certapi_connection_error(capsys):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyRemoteClient(
+        error=NetworkError(None, "CertAPI server is unreachable: GET https://certapi.local/api/health")
+    )
+    client.key_store = DummyKeyStore()
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    mgr.update_watch_domains(["down.example.com"])
+
+    output = capsys.readouterr().out
+    assert (
+        "[Cert API Client] Renewal error: NetworkError: "
+        "CertAPI server is unreachable: GET https://certapi.local/api/health"
+    ) in output
+    assert (
+        mgr.get_state()["last_error_message"] == "CertAPI server is unreachable: GET https://certapi.local/api/health"
+    )
 
 
 def test_stop_does_not_wait_for_hung_remote_request_thread():

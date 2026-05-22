@@ -1,8 +1,11 @@
 from unittest.mock import Mock
 
+import pytest
+import requests
 from flask import Flask
 from flask_restx import Api, Namespace
 
+from certapi.errors import CertApiException, HttpError, NetworkError
 from certapi.client.cert_manager_client import CertManagerClient
 from certapi.domain_batching import create_safe_domain_batches
 from certapi.http.types import CertificateResponse
@@ -147,6 +150,92 @@ def test_cert_manager_client_obtain_calls_api_obtain(monkeypatch):
     assert captured["params"]["skip_failing"] is False
     assert captured["params"]["batch_domains"] is True
     assert captured["params"]["self_verify"] is False
+
+
+def test_cert_manager_client_setup_uses_health_endpoint(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+    captured = {}
+
+    def fake_get(path, params=None):
+        captured["path"] = path
+        captured["params"] = params
+        return {"status": "ok"}
+
+    monkeypatch.setattr(client, "_get", fake_get)
+
+    client.setup()
+
+    assert captured["path"] == "/api/health"
+    assert captured["params"] is None
+
+
+def test_cert_manager_client_setup_raises_http_error_with_response_body(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+    response = requests.Response()
+    response.status_code = 503
+    response.url = "https://certapi.local/api/health"
+    response._content = b'{"message": "service unavailable"}'
+    response.request = requests.Request("GET", response.url).prepare()
+
+    def fake_request(*_args, **_kwargs):
+        return response
+
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    with pytest.raises(HttpError) as exc_info:
+        client.setup()
+
+    assert "HTTP 503" in exc_info.value.message
+    assert exc_info.value.detail["body"]["message"] == "service unavailable"
+
+
+def test_cert_manager_client_setup_raises_network_error_for_unreachable_server(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+
+    def fake_request(*_args, **_kwargs):
+        raise requests.exceptions.ConnectionError("connection refused")
+
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    with pytest.raises(NetworkError) as exc_info:
+        client.setup()
+
+    assert "unreachable" in exc_info.value.message
+    assert exc_info.value.detail["message"] == "connection refused"
+
+
+def test_cert_manager_client_get_rejects_successful_non_json_response(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+    response = requests.Response()
+    response.status_code = 200
+    response.url = "https://certapi.local/api/health"
+    response._content = b"ok"
+    response.request = requests.Request("GET", response.url).prepare()
+
+    def fake_request(*_args, **_kwargs):
+        return response
+
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    with pytest.raises(CertApiException) as exc_info:
+        client.setup()
+
+    assert "not valid JSON" in exc_info.value.message
+    assert exc_info.value.detail["body"] == "ok"
+
+
+def test_api_health_endpoint():
+    app = Flask(__name__)
+    api = Api(app)
+    api_ns = Namespace("api")
+    api.add_namespace(api_ns)
+
+    create_api_resources(api_ns, Mock())
+
+    response = app.test_client().get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json == {"status": "ok"}
 
 
 def test_remote_obtain_self_verify_false_skips_server_prefilter():

@@ -273,6 +273,7 @@ class RenewalManager:
     def _set_error(self, error: Exception):
         self._last_error_message = str(error)
         self._last_error_timestamp = self.clock_fn()
+        print(f"[Cert API Client] Renewal error: {error.__class__.__name__}: {error}")
 
     def _worker(self):
         while True:
@@ -494,6 +495,7 @@ class RenewalManager:
             if res is None:
                 return
             certs = res.issued + res.existing
+            self._log_certificate_results(res.issued, "Issued certificates")
             self._update_expiry_cache(certs)
             covered_domains = self._covered_domains_from_response(certs)
             unresolved_domains = [domain for domain in domains if domain not in covered_domains]
@@ -581,6 +583,17 @@ class RenewalManager:
                     covered.add(domain)
         return covered
 
+    def _log_certificate_results(self, certs, label: str):
+        if not certs:
+            return
+        certificates = []
+        for cert in certs:
+            domains = [domain for domain in cert.domains if domain]
+            if domains:
+                certificates.append(", ".join(domains))
+        if certificates:
+            print(f"[Cert API Client] {label}: {'; '.join(certificates)}")
+
     def _add_to_blacklist(self, domain: str, now: datetime):
         with self._lock:
             self._blacklist[domain] = now + timedelta(seconds=self.blacklist_duration_seconds)
@@ -603,6 +616,16 @@ class RenewalManager:
             return False
         try:
             return key_store.find_key_and_cert_by_domain(domain) is not None
+        except Exception as e:
+            self._set_error(e)
+            return False
+
+    def _has_named_certificate(self, name: str) -> bool:
+        key_store = getattr(self.cert_manager_client, "key_store", None)
+        if key_store is None:
+            return False
+        try:
+            return key_store.find_key_and_cert_by_cert_id(name) is not None
         except Exception as e:
             self._set_error(e)
             return False
@@ -647,10 +670,11 @@ class RenewalManager:
 
         try:
             self_signed_name = domain + ".selfsigned"
-            if key_store.find_key_by_name(self_signed_name):
+            if self._has_named_certificate(self_signed_name):
                 return
             key, cert = signer.generate_key_and_cert_for_domain(domain, key_type="ecdsa")
             key_id = key_store.save_key(key, self_signed_name)
             key_store.save_cert(key_id, cert, [domain], name=self_signed_name)
+            print(f"[Cert API Client] Using self-signed certificate: {self_signed_name} for {domain}")
         except Exception as e:
             self._set_error(e)
