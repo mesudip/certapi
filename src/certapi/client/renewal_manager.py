@@ -192,16 +192,15 @@ class RenewalManager:
         """
         Start the background renewal worker.
 
-        The worker immediately performs a forced renewal pass, then sleeps until
-        the next watched certificate approaches the renewal threshold or until
-        another thread publishes a new set with :meth:`update_watch_domains`.
+        The worker sleeps until the next watched certificate approaches the
+        renewal threshold or until another thread publishes a new set with
+        :meth:`update_watch_domains`.
         Calling ``start`` while already running is a no-op.
         """
         with self._lock:
             if self._running:
                 return
             self._running = True
-            self._cycle_requested = True
             self._thread = threading.Thread(target=self._worker, name="CertApi-RenewalManager", daemon=True)
             self._thread.start()
 
@@ -281,8 +280,18 @@ class RenewalManager:
                 if not self._running:
                     return
                 force = self._force_trigger
-                self._cycle_requested = False
                 self._force_trigger = False
+                cycle_requested = self._cycle_requested
+                self._cycle_requested = False
+
+                if not force and not cycle_requested:
+                    wait_seconds = self._compute_wait_seconds_locked(self.clock_fn())
+                    if wait_seconds is None:
+                        self._lock.wait()
+                        continue
+                    if wait_seconds > 0:
+                        self._lock.wait(wait_seconds)
+                        continue
 
             attempt_count = self._run_cycle(force=force)
 
@@ -291,7 +300,7 @@ class RenewalManager:
                     return
                 if self._force_trigger or self._cycle_requested:
                     continue
-                wait_seconds = self._compute_wait_seconds(self.clock_fn())
+                wait_seconds = self._compute_wait_seconds_locked(self.clock_fn())
 
                 # Avoid tight loops in cases where nothing was attempted and no wait was computed.
                 if (wait_seconds is not None and wait_seconds <= 0) and attempt_count == 0:
@@ -322,10 +331,12 @@ class RenewalManager:
 
     def _compute_wait_seconds(self, now: datetime) -> Optional[float]:
         with self._lock:
-            if not self._cache:
-                return None
-            next_ssl_expiry = min(self._cache.values())
+            return self._compute_wait_seconds_locked(now)
 
+    def _compute_wait_seconds_locked(self, now: datetime) -> Optional[float]:
+        if not self._cache:
+            return None
+        next_ssl_expiry = min(self._cache.values())
         remaining_seconds = (next_ssl_expiry - now).total_seconds()
         if remaining_seconds > self.update_threshold_secs:
             return min(

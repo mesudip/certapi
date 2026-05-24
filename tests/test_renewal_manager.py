@@ -628,6 +628,79 @@ def test_renewal_cycle_invokes_callback_and_callback_updates_domains():
     assert len(client.calls) == 1
 
 
+def test_start_does_not_invoke_callback_without_due_watched_cert():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    callback_called = threading.Event()
+
+    mgr = RenewalManager(
+        DummyClient(),
+        renewal_callback=callback_called.set,
+        renew_threshold_days=30,
+        clock_fn=lambda: now,
+    )
+
+    mgr.start()
+    try:
+        assert not callback_called.wait(timeout=0.05)
+    finally:
+        mgr.stop()
+
+
+def test_update_watch_domains_does_not_invoke_callback_for_fresh_cert():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    callback_called = threading.Event()
+    client = DummyClient()
+    client.key_store = DummyKeyStore()
+    key = Key.generate("ecdsa")
+    csr = key.create_csr(domain="fresh-callback.example.com", alt_names=["fresh-callback.example.com"])
+    cert_builder = (
+        x509.CertificateBuilder()
+        .subject_name(csr.subject)
+        .issuer_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "pytest.certapi.local")]))
+        .public_key(csr.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=90))
+    )
+    for ext in csr.extensions:
+        cert_builder = cert_builder.add_extension(ext.value, ext.critical)
+    cert = key.sign_csr(cert_builder)
+    client.key_store.set_domain_cert("fresh-callback.example.com", [cert])
+
+    mgr = RenewalManager(
+        client,
+        renewal_callback=callback_called.set,
+        renew_threshold_days=30,
+        clock_fn=lambda: now,
+    )
+    mgr.start()
+    try:
+        mgr.update_watch_domains(["fresh-callback.example.com"])
+        assert not callback_called.wait(timeout=0.05)
+    finally:
+        mgr.stop()
+
+
+def test_worker_invokes_callback_when_cached_cert_is_due():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    callback_called = threading.Event()
+    mgr = RenewalManager(
+        DummyClient(),
+        renewal_callback=callback_called.set,
+        renew_threshold_days=30,
+        clock_fn=lambda: now,
+    )
+    with mgr._lock:
+        mgr._watch_domains = {"due-callback.example.com"}
+        mgr._cache["due-callback.example.com"] = now + timedelta(days=1)
+
+    mgr.start()
+    try:
+        assert callback_called.wait(timeout=2)
+    finally:
+        mgr.stop()
+
+
 def test_running_trigger_now_blocks_until_callback_update_finishes():
     now = datetime(2026, 1, 1, tzinfo=UTC)
     obtain_started = threading.Event()
@@ -768,6 +841,7 @@ def test_stop_does_not_wait_for_hung_remote_request_thread():
         mgr._watch_domains = {"hung.example.com"}
 
     mgr.start()
+    mgr.trigger_now()
     assert started.wait(timeout=2)
     mgr.stop()
 
