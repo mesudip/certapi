@@ -156,9 +156,10 @@ def test_cert_manager_client_setup_uses_health_endpoint(monkeypatch):
     client = CertManagerClient("https://certapi.local")
     captured = {}
 
-    def fake_get(path, params=None):
+    def fake_get(path, params=None, timeout=None):
         captured["path"] = path
         captured["params"] = params
+        captured["timeout"] = timeout
         return {"status": "ok"}
 
     monkeypatch.setattr(client, "_get", fake_get)
@@ -167,6 +168,38 @@ def test_cert_manager_client_setup_uses_health_endpoint(monkeypatch):
 
     assert captured["path"] == "/api/health"
     assert captured["params"] is None
+    assert captured["timeout"] is None
+
+
+def test_cert_manager_client_wait_healthy_returns_true_when_health_check_succeeds(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+
+    monkeypatch.setattr(client, "setup", lambda timeout=None: {"status": "ok"})
+
+    assert client.wait_healthy() is True
+
+
+def test_cert_manager_client_wait_healthy_returns_false_when_raise_exception_disabled(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+
+    def fail_setup(timeout=None):
+        raise CertApiException("invalid health response")
+
+    monkeypatch.setattr(client, "setup", fail_setup)
+
+    assert client.wait_healthy(timeout_seconds=0, raise_exception=False) is False
+
+
+def test_cert_manager_client_wait_healthy_raises_by_default(monkeypatch):
+    client = CertManagerClient("https://certapi.local")
+
+    def fail_setup(timeout=None):
+        raise NetworkError(None, "connection refused")
+
+    monkeypatch.setattr(client, "setup", fail_setup)
+
+    with pytest.raises(NetworkError):
+        client.wait_healthy(timeout_seconds=0)
 
 
 def test_cert_manager_client_setup_raises_http_error_with_response_body(monkeypatch):

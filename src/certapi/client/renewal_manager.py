@@ -6,6 +6,7 @@ from typing import Callable, Dict, Optional, Set, Any, List, Literal
 
 from certapi.crypto import Key, certs_from_pem
 from certapi.client.cert_manager_client import CertManagerClient
+from certapi.http.types import CertificateResponse
 from certapi.issuers import SelfCertIssuer
 from certapi.manager.acme_cert_manager import DEFAULT_RENEW_THRESHOLD_DAYS
 
@@ -59,7 +60,8 @@ class RenewalManager:
         max_sleep_seconds: int = 32 * 24 * 3600,
         renew_retry_interval_seconds: int = 24 * 3600,
         blacklist_duration_seconds: int = 180,
-        remote_poll_interval_seconds: int = 30,
+        remote_poll_interval_seconds: int = 10,
+        remote_startup_health_timeout_seconds: int = 60,
         clock_fn: Optional[Callable[[], datetime]] = None,
         sleep_fn: Optional[Callable[[float], None]] = None,
         key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
@@ -99,6 +101,9 @@ class RenewalManager:
                 domain that had no usable local certificate.
             remote_poll_interval_seconds: Poll interval while waiting for remote
                 ``CertManagerClient`` requests.
+            remote_startup_health_timeout_seconds: How long to wait for a
+                remote ``CertManagerClient`` to become healthy before the first
+                request.
             clock_fn: Optional clock override for deterministic tests.
             sleep_fn: Optional sleep override for deterministic tests.
             key_type: Private key type requested from the backend.
@@ -131,6 +136,7 @@ class RenewalManager:
         self.renew_retry_interval_seconds = renew_retry_interval_seconds
         self.blacklist_duration_seconds = blacklist_duration_seconds
         self.remote_poll_interval_seconds = remote_poll_interval_seconds
+        self.remote_startup_health_timeout_seconds = remote_startup_health_timeout_seconds
         self.clock_fn = clock_fn or (lambda: datetime.now(timezone.utc))
         self.sleep_fn = sleep_fn
 
@@ -165,6 +171,7 @@ class RenewalManager:
         self._last_error_message: Optional[str] = None
         self._last_error_timestamp: Optional[datetime] = None
         self._self_signer: Optional[SelfCertIssuer] = None
+        self._remote_health_checked = False
 
     def update_watch_domains(self, domains: List[str]):
         """
@@ -272,7 +279,12 @@ class RenewalManager:
     def _set_error(self, error: Exception):
         self._last_error_message = str(error)
         self._last_error_timestamp = self.clock_fn()
-        print(f"[Cert API Client] Renewal error: {error.__class__.__name__}: {error}")
+        print(f"{self._log_prefix()} Renewal error: {error.__class__.__name__}: {error}")
+
+    def _log_prefix(self) -> str:
+        if isinstance(self.cert_manager_client, CertManagerClient):
+            return "[CertApi client]"
+        return "[CertApi]"
 
     def _worker(self):
         while True:
@@ -506,24 +518,32 @@ class RenewalManager:
             if res is None:
                 return
             certs = res.issued + res.existing
+            self._log_certificate_fetch_summary(res)
             self._log_certificate_results(res.issued, "Issued certificates")
             self._update_expiry_cache(certs)
             covered_domains = self._covered_domains_from_response(certs)
             unresolved_domains = [domain for domain in domains if domain not in covered_domains]
+            self._log_unresolved_domains(unresolved_domains)
+            self_signed_domains = []
             for domain in unresolved_domains:
                 self._add_to_blacklist(domain, now)
                 if domain in domains_with_cached_entries or self._has_local_certificate(domain):
                     self._schedule_existing_certificate_retry(domain, now)
                 else:
-                    self._register_self_signed(domain)
+                    if self._register_self_signed(domain, log=False):
+                        self_signed_domains.append(domain)
+            self._log_self_signed_domains(self_signed_domains)
         except Exception as e:
             self._set_error(e)
+            self_signed_domains = []
             for domain in domains:
                 self._add_to_blacklist(domain, now)
                 if domain in domains_with_cached_entries or self._has_local_certificate(domain):
                     self._schedule_existing_certificate_retry(domain, now)
                 else:
-                    self._register_self_signed(domain)
+                    if self._register_self_signed(domain, log=False):
+                        self_signed_domains.append(domain)
+            self._log_self_signed_domains(self_signed_domains)
 
     def _schedule_existing_certificate_retry(self, domain: str, now: datetime):
         retry_interval_seconds = min(self.renew_retry_interval_seconds, 24 * 3600)
@@ -540,6 +560,9 @@ class RenewalManager:
         with self._lock:
             stop_when_manager_stops = self._running
 
+        if not self._wait_for_remote_health_once(stop_when_manager_stops=stop_when_manager_stops):
+            return None
+
         def worker():
             nonlocal result, exception
             try:
@@ -551,7 +574,8 @@ class RenewalManager:
 
         thread = threading.Thread(target=worker, name="CertApi-RenewalManager-RemoteRequest", daemon=True)
         thread.start()
-        print("[Cert API Client] Requesting certificates:", ", ".join(domains))
+        certificate_label = "certificate" if len(domains) == 1 else "certificates"
+        print(f"{self._log_prefix()} Requesting {len(domains)} {certificate_label}: {', '.join(domains)}")
         start_time = time.time()
         while thread.is_alive():
             thread.join(timeout=self.remote_poll_interval_seconds)
@@ -560,10 +584,32 @@ class RenewalManager:
             if stop_when_manager_stops and not running:
                 return None
             if thread.is_alive():
-                print(f"[Cert API Client] Waiting for response since {int(time.time() - start_time)} seconds")
+                print(f"{self._log_prefix()} Waiting for certapi for {int(time.time() - start_time)} secs")
         if exception:
             raise exception
         return result
+
+    def _wait_for_remote_health_once(self, stop_when_manager_stops: bool = False) -> bool:
+        with self._lock:
+            if self._remote_health_checked:
+                return True
+
+        def cancelled():
+            if not stop_when_manager_stops:
+                return False
+            with self._lock:
+                return not self._running
+
+        healthy = self.cert_manager_client.wait_healthy(
+            self.remote_startup_health_timeout_seconds,
+            raise_exception=True,
+            cancelled_fn=cancelled,
+        )
+        if not healthy:
+            return False
+        with self._lock:
+            self._remote_health_checked = True
+        return True
 
     def _update_expiry_cache(self, certs):
         now = self.clock_fn()
@@ -603,7 +649,23 @@ class RenewalManager:
             if domains:
                 certificates.append(", ".join(domains))
         if certificates:
-            print(f"[Cert API Client] {label}: {'; '.join(certificates)}")
+            print(f"{self._log_prefix()} {label}: {'; '.join(certificates)}")
+
+    def _log_certificate_fetch_summary(self, response: CertificateResponse):
+        issued_count = len(response.issued)
+        existing_count = len(response.existing)
+        total_count = issued_count + existing_count
+        print(
+            f"{self._log_prefix()} Fetched {total_count} certificates: " f"{issued_count} new, {existing_count} reused"
+        )
+
+    def _log_unresolved_domains(self, domains: List[str]):
+        if domains:
+            print(f"{self._log_prefix()} WARN [unresolved]: {', '.join(domains)}")
+
+    def _log_self_signed_domains(self, domains: List[str]):
+        if domains:
+            print(f"{self._log_prefix()} WARN [self-sign]: {', '.join(domains)}")
 
     def _add_to_blacklist(self, domain: str, now: datetime):
         with self._lock:
@@ -667,25 +729,28 @@ class RenewalManager:
             self._set_error(e)
             return None
 
-    def _register_self_signed(self, domain: str):
+    def _register_self_signed(self, domain: str, log: bool = True) -> bool:
         if self._has_local_certificate(domain):
-            return
+            return False
 
         key_store = getattr(self.cert_manager_client, "key_store", None)
         if key_store is None:
-            return
+            return False
 
         signer = self._get_or_create_self_signer()
         if signer is None:
-            return
+            return False
 
         try:
             self_signed_name = domain + ".selfsigned"
             if self._has_named_certificate(self_signed_name):
-                return
+                return False
             key, cert = signer.generate_key_and_cert_for_domain(domain, key_type="ecdsa")
             key_id = key_store.save_key(key, self_signed_name)
             key_store.save_cert(key_id, cert, [domain], name=self_signed_name)
-            print(f"[Cert API Client] Using self-signed certificate: {self_signed_name} for {domain}")
+            if log:
+                self._log_self_signed_domains([domain])
+            return True
         except Exception as e:
             self._set_error(e)
+            return False

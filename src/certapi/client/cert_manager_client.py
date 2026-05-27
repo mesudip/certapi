@@ -1,5 +1,7 @@
+import time
+
 import requests
-from typing import List, Union, Dict, Optional, Any, Literal
+from typing import Callable, List, Union, Dict, Optional, Any, Literal
 from cryptography import x509
 from certapi.errors import CertApiException, HttpError, NetworkError
 from certapi.http.types import CertificateResponse, IssuedCert
@@ -8,7 +10,7 @@ from certapi.crypto import Key
 
 
 class CertManagerClient:
-    def __init__(self, base_url: str, key_store: Optional[KeyStore] = None, timeout: int = 15):
+    def __init__(self, base_url: str, key_store: Optional[KeyStore] = None, timeout: int = 300):
         self.base_url = base_url.rstrip("/")
         self.key_store = key_store
         self.timeout = timeout
@@ -24,6 +26,7 @@ class CertManagerClient:
         json_data: Optional[Dict[str, Any]] = None,
         data: Optional[str] = None,
         headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
     ) -> requests.Response:
         url = self._url(path)
         try:
@@ -34,7 +37,7 @@ class CertManagerClient:
                 json=json_data,
                 data=data,
                 headers=headers,
-                timeout=self.timeout,
+                timeout=self.timeout if timeout is None else timeout,
             )
         except requests.exceptions.Timeout as e:
             raise NetworkError(
@@ -92,8 +95,8 @@ class CertManagerClient:
                 step="CertAPI client response parsing",
             ) from e
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        response = self._request("GET", path, params=params)
+    def _get(self, path: str, params: Optional[Dict[str, Any]] = None, timeout: Optional[float] = None) -> Any:
+        response = self._request("GET", path, params=params, timeout=timeout)
         return self._json_response(response)
 
     def _post(
@@ -108,11 +111,55 @@ class CertManagerClient:
         )
         return self._json_response(response)
 
-    def setup(self):
+    def setup(self, timeout: Optional[float] = None):
         """
         Check connection to the cert manager server.
         """
-        return self._get("/api/health")
+        return self._get("/api/health", timeout=timeout)
+
+    def wait_healthy(
+        self,
+        timeout_seconds: int = 60,
+        retry_interval_seconds: float = 1,
+        raise_exception: bool = True,
+        request_timeout_seconds: float = 5,
+        cancelled_fn: Optional[Callable[[], bool]] = None,
+    ) -> bool:
+        """
+        Wait for the cert manager server to become healthy.
+
+        Returns ``False`` on timeout when ``raise_exception`` is disabled, or
+        when ``cancelled_fn`` reports cancellation.
+        """
+        start_time = time.monotonic()
+        deadline = start_time + timeout_seconds
+        last_error = None
+        while True:
+            if cancelled_fn is not None and cancelled_fn():
+                return False
+            try:
+                remaining = deadline - time.monotonic()
+                self.setup(timeout=min(request_timeout_seconds, max(remaining, 0.001)))
+                return True
+            except CertApiException as e:
+                last_error = e
+                if cancelled_fn is not None and cancelled_fn():
+                    return False
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    if not raise_exception:
+                        return False
+                    raise last_error
+                elapsed_seconds = int(time.monotonic() - start_time)
+                print(f"[CertApi client] Waiting for CertAPI since {elapsed_seconds} seconds")
+                sleep_until = time.monotonic() + min(retry_interval_seconds, remaining)
+                while True:
+                    if cancelled_fn is not None and cancelled_fn():
+                        return False
+                    sleep_remaining = sleep_until - time.monotonic()
+                    if sleep_remaining <= 0:
+                        break
+                    time.sleep(min(0.1, sleep_remaining))
 
     def issue_certificate(
         self,

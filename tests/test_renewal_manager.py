@@ -65,6 +65,31 @@ class DummyRemoteClient(CertManagerClient):
         self.started = started
         self.release = release
         self.obtain_calls = []
+        self.wait_healthy_calls = []
+
+    def wait_healthy(
+        self,
+        timeout_seconds=60,
+        retry_interval_seconds=1,
+        raise_exception=True,
+        request_timeout_seconds=5,
+        cancelled_fn=None,
+    ):
+        self.wait_healthy_calls.append(
+            {
+                "timeout_seconds": timeout_seconds,
+                "retry_interval_seconds": retry_interval_seconds,
+                "raise_exception": raise_exception,
+                "request_timeout_seconds": request_timeout_seconds,
+            }
+        )
+        if cancelled_fn is not None and cancelled_fn():
+            return False
+        if self.error:
+            if not raise_exception:
+                return False
+            raise self.error
+        return True
 
     def obtain(self, hosts, **kwargs):
         self.obtain_calls.append({"hosts": hosts, "kwargs": kwargs})
@@ -516,7 +541,7 @@ def test_new_domain_failure_selfsigns_and_blacklists(capsys):
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "new.example.com.selfsigned"
     output = capsys.readouterr().out
-    assert "[Cert API Client] Using self-signed certificate: new.example.com.selfsigned for new.example.com" in output
+    assert "[CertApi] WARN [self-sign]: new.example.com" in output
 
     # Blacklist should suppress immediate retry.
     mgr._run_cycle(force=False)
@@ -527,6 +552,20 @@ def test_new_domain_failure_selfsigns_and_blacklists(capsys):
     clock["now"] = now + timedelta(seconds=181)
     mgr._run_cycle(force=False)
     assert len(client.calls) == 2
+
+
+def test_multiple_new_domain_failures_log_one_selfsign_warning(capsys):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    client.key_store = DummyKeyStore()
+    client.set_handler("one.example.com", RuntimeError("obtain failed"))
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    mgr._renew_domains(["one.example.com", "two.example.com", "three.example.com"], now)
+
+    output = capsys.readouterr().out
+    assert "[CertApi] WARN [self-sign]: one.example.com, two.example.com, three.example.com" in output
+    assert output.count("WARN [self-sign]") == 1
 
 
 def test_selfsigned_registration_rewrites_missing_cert_when_key_exists(capsys):
@@ -541,10 +580,7 @@ def test_selfsigned_registration_rewrites_missing_cert_when_key_exists(capsys):
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == self_signed_name
     output = capsys.readouterr().out
-    assert (
-        "[Cert API Client] Using self-signed certificate: partial.example.com.selfsigned for partial.example.com"
-        in output
-    )
+    assert "[CertApi] WARN [self-sign]: partial.example.com" in output
 
 
 def test_partial_renewal_success_selfsigns_uncovered_domains(capsys):
@@ -567,11 +603,29 @@ def test_partial_renewal_success_selfsigns_uncovered_domains(capsys):
     assert len(client.key_store.saved_certs) == 1
     assert client.key_store.saved_certs[0][2] == "missing.example.com.selfsigned"
     output = capsys.readouterr().out
-    assert "[Cert API Client] Issued certificates: ok.example.com" in output
-    assert (
-        "[Cert API Client] Using self-signed certificate: missing.example.com.selfsigned for missing.example.com"
-        in output
+    assert "[CertApi] Fetched 1 certificates: 1 new, 0 reused" in output
+    assert "[CertApi] Issued certificates: ok.example.com" in output
+    assert "[CertApi] WARN [unresolved]: missing.example.com" in output
+    assert "[CertApi] WARN [self-sign]: missing.example.com" in output
+
+
+def test_renewal_logs_fetched_certificate_summary(capsys):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    new_cert = _make_cert_pem("new.example.com", now, valid_for_days=60)
+    reused_cert = _make_cert_pem("reused.example.com", now, valid_for_days=60)
+    response = CertificateResponse(
+        issued=[IssuedCert(cert=new_cert, domains=["new.example.com"])],
+        existing=[IssuedCert(cert=reused_cert, domains=["reused.example.com"])],
     )
+    client.set_handler("new.example.com", response)
+    client.set_handler("reused.example.com", response)
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    mgr.update_watch_domains(["new.example.com", "reused.example.com"])
+
+    output = capsys.readouterr().out
+    assert "[CertApi] Fetched 2 certificates: 1 new, 1 reused" in output
 
 
 def test_update_watch_domains_blocks_until_running_worker_processes_domains():
@@ -791,9 +845,20 @@ def test_remote_certapi_polling_prints_waiting_message(capsys):
     thread.join(timeout=2)
 
     output = capsys.readouterr().out
-    assert "[Cert API Client] Requesting certificates: remote.example.com" in output
-    assert "[Cert API Client] Waiting for response since" in output
+    assert "[CertApi client] Requesting 1 certificate: remote.example.com" in output
+    assert "[CertApi client] Waiting for certapi for" in output
+    assert "[CertApi client] Fetched 1 certificates: 1 new, 0 reused" in output
     assert len(client.obtain_calls) == 1
+    assert client.wait_healthy_calls == [
+        {"timeout_seconds": 60, "retry_interval_seconds": 1, "raise_exception": True, "request_timeout_seconds": 5}
+    ]
+
+
+def test_remote_certapi_polling_defaults_to_ten_seconds():
+    client = DummyRemoteClient()
+    mgr = RenewalManager(client)
+
+    assert mgr.remote_poll_interval_seconds == 10
 
 
 def test_remote_renewal_uses_skip_failing_and_selfsigns_unresolved_domain():
@@ -824,7 +889,7 @@ def test_remote_renewal_logs_certapi_connection_error(capsys):
 
     output = capsys.readouterr().out
     assert (
-        "[Cert API Client] Renewal error: NetworkError: "
+        "[CertApi client] Renewal error: NetworkError: "
         "CertAPI server is unreachable: GET https://certapi.local/api/health"
     ) in output
     assert (
