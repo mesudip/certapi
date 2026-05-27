@@ -12,6 +12,7 @@ from ..keystore.KeyStore import KeyStore
 from cryptography.x509 import Certificate, CertificateSigningRequest
 from ..crypto import Key, certs_to_pem, cert_to_pem, get_csr_hostnames
 from ..domain_batching import create_safe_domain_batches
+from ..domain_matching import domain_matches_cert_domain
 
 DEFAULT_RENEW_THRESHOLD_DAYS = 62
 
@@ -174,16 +175,23 @@ class AcmeCertManager:
 
         existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]] = {}
         for h in hosts:
-            result = self.key_store.find_key_and_cert_by_domain(h)
-            if result is not None:
-                # result is (domain_id, key, cert_list)
-                cert = result[2][0]
+            if hasattr(self.key_store, "find_key_and_cert_covering_domain"):
+                covering_result = self.key_store.find_key_and_cert_covering_domain(h)
+            else:
+                result = self.key_store.find_key_and_cert_by_domain(h)
+                covering_result = (h, result[0], result[1], result[2]) if result is not None else None
+            if covering_result is not None:
+                # covering_result is (matched_domain, domain_id, key, cert_list)
+                matched_domain, cert_id, key, cert_list = covering_result
+                cert = cert_list[0]
                 invalid_date = cert.not_valid_after_utc
                 # Check if the certificate is still valid for at least renew_threshold_days
                 threshold = renew_threshold_days if renew_threshold_days is not None else self.renew_threshold_days
                 if invalid_date > datetime.now(timezone.utc) + timedelta(days=threshold):
-                    existing[h] = result
-        missing = [h for h in hosts if h not in existing]
+                    existing[matched_domain] = (cert_id, key, cert_list)
+        missing = [
+            h for h in hosts if not any(domain_matches_cert_domain(existing_domain, h) for existing_domain in existing)
+        ]
         if len(missing) > 0:
             issued_certs_list = []
             # Group missing hosts by the challenge solver that supports them

@@ -44,7 +44,13 @@ def create_cert_resources(cert_ns, key_store):
             domain = args["domain"]
 
             if domain:
-                cert_info = key_store.find_key_and_cert_by_domain(domain)
+                if hasattr(key_store, "find_key_and_cert_covering_domain"):
+                    covering_info = key_store.find_key_and_cert_covering_domain(domain)
+                    cert_info = covering_info[1:] if covering_info else None
+                    matched_domain = covering_info[0] if covering_info else domain
+                else:
+                    cert_info = key_store.find_key_and_cert_by_domain(domain)
+                    matched_domain = domain
                 if cert_info:
                     key_id, key_obj, cert_list = cert_info
                     if isinstance(cert_list, list):
@@ -54,9 +60,7 @@ def create_cert_resources(cert_ns, key_store):
                             cert_to_pem(cert_list).decode("utf-8") if hasattr(cert_list, "public_bytes") else cert_list
                         )
 
-                    return [
-                        {"id": domain, "key_id": key_id, "pem": pem_content}  # Using domain as ID for this endpoint
-                    ]
+                    return [{"id": matched_domain, "key_id": key_id, "pem": pem_content}]
                 else:
                     cert_ns.abort(404, message="Certificate not found for this domain")
             else:

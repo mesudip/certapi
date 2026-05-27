@@ -163,6 +163,104 @@ def test_get_cert_by_id(keystore: KeyStore, ca_key: Key):
     assert cert_to_pem(found_certs[0]) == cert_to_pem(cert)
 
 
+@pytest.mark.parametrize("store_type", ["sqlite", "filesystem"])
+def test_wildcard_cert_covers_single_label_subdomain(store_type, tmp_path, ca_key: Key):
+    if store_type == "sqlite":
+        keystore = SqliteKeyStore(db_path=str(tmp_path / "wildcard.db"))
+    else:
+        keystore = FileSystemKeyStore(base_dir=str(tmp_path / "wildcard_fs"))
+
+    key = Key.generate("rsa")
+    key_id = keystore.save_key(key, "*.example.com")
+    csr = key.create_csr(domain="*.example.com", alt_names=["*.example.com"])
+    cert = sign_csr(csr, ca_key, 7)
+    keystore.save_cert(key_id, cert, ["*.example.com"], "*.example.com")
+
+    direct = keystore.find_key_and_cert_by_domain("*.example.com")
+    assert direct is not None
+
+    covered = keystore.find_key_and_cert_covering_domain("api.example.com")
+    assert covered is not None
+    matched_domain, found_id, found_key, found_certs = covered
+    assert matched_domain == "*.example.com"
+    assert found_key.to_pem() == key.to_pem()
+    assert cert_to_pem(found_certs[0]) == cert_to_pem(cert)
+
+    by_domain = keystore.find_key_and_cert_by_domain("api.example.com")
+    assert by_domain is not None
+    assert by_domain[1].to_pem() == key.to_pem()
+    assert keystore.find_key_and_cert_by_domain("example.com") is None
+    assert keystore.find_key_and_cert_by_domain("example.co.uk") is None
+    assert keystore.find_key_and_cert_by_domain("v1.api.example.com") is None
+
+
+@pytest.mark.parametrize("store_type", ["sqlite", "filesystem"])
+def test_exact_cert_takes_precedence_over_wildcard_cert(store_type, tmp_path, ca_key: Key):
+    if store_type == "sqlite":
+        keystore = SqliteKeyStore(db_path=str(tmp_path / "precedence.db"))
+    else:
+        keystore = FileSystemKeyStore(base_dir=str(tmp_path / "precedence_fs"))
+
+    wildcard_key = Key.generate("rsa")
+    wildcard_key_id = keystore.save_key(wildcard_key, "*.example.com")
+    wildcard_csr = wildcard_key.create_csr(domain="*.example.com", alt_names=["*.example.com"])
+    wildcard_cert = sign_csr(wildcard_csr, ca_key, 7)
+    keystore.save_cert(wildcard_key_id, wildcard_cert, ["*.example.com"], "*.example.com")
+
+    exact_key = Key.generate("rsa")
+    exact_key_id = keystore.save_key(exact_key, "api.example.com")
+    exact_csr = exact_key.create_csr(domain="api.example.com", alt_names=["api.example.com"])
+    exact_cert = sign_csr(exact_csr, ca_key, 7)
+    keystore.save_cert(exact_key_id, exact_cert, ["api.example.com"], "api.example.com")
+
+    covered = keystore.find_key_and_cert_covering_domain("api.example.com")
+    assert covered is not None
+    matched_domain, found_id, found_key, found_certs = covered
+    assert matched_domain == "api.example.com"
+    assert found_key.to_pem() == exact_key.to_pem()
+    assert cert_to_pem(found_certs[0]) == cert_to_pem(exact_cert)
+
+
+def test_sqlite_wildcard_save_uses_wildcard_table(tmp_path, ca_key: Key):
+    db_path = tmp_path / "wildcard-table.db"
+    keystore = SqliteKeyStore(db_path=str(db_path))
+
+    key = Key.generate("rsa")
+    key_id = keystore.save_key(key, "*.example.com")
+    csr = key.create_csr(domain="*.example.com", alt_names=["*.example.com"])
+    cert = sign_csr(csr, ca_key, 7)
+    cert_id = keystore.save_cert(key_id, cert, ["*.example.com"], "*.example.com")
+
+    conn = keystore._get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT certificate_id FROM ssl_wildcards WHERE domain = ?", ("*.example.com",))
+    assert cur.fetchone() == (cert_id,)
+    cur.execute("SELECT certificate_id FROM ssl_domains WHERE domain = ?", ("*.example.com",))
+    assert cur.fetchone() is None
+    cur.close()
+
+
+def test_sqlite_lookup_supports_legacy_wildcard_rows(tmp_path, ca_key: Key):
+    keystore = SqliteKeyStore(db_path=str(tmp_path / "legacy-wildcard.db"))
+
+    key = Key.generate("rsa")
+    key_id = keystore.save_key(key, "*.example.com")
+    csr = key.create_csr(domain="*.example.com", alt_names=["*.example.com"])
+    cert = sign_csr(csr, ca_key, 7)
+    cert_id = keystore.save_cert(key_id, cert, [], "*.example.com")
+
+    conn = keystore._get_db_connection()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO ssl_domains (domain, certificate_id) VALUES (?, ?)", ("*.example.com", cert_id))
+    conn.commit()
+    cur.close()
+
+    covered = keystore.find_key_and_cert_covering_domain("api.example.com")
+    assert covered is not None
+    assert covered[0] == "*.example.com"
+    assert covered[2].to_pem() == key.to_pem()
+
+
 def sign_csr(csr: x509.CertificateSigningRequest, issuer_key: Key, days_valid=365) -> Certificate:
     now = datetime.now(UTC)
     builder = (

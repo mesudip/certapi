@@ -609,6 +609,27 @@ def test_partial_renewal_success_selfsigns_uncovered_domains(capsys):
     assert "[CertApi] WARN [self-sign]: missing.example.com" in output
 
 
+def test_wildcard_response_covers_watched_subdomain_without_selfsigning(capsys):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    client.key_store = DummyKeyStore()
+    wildcard_cert = _make_cert_pem("*.example.com", now, valid_for_days=60)
+    client.set_handler(
+        "api.example.com",
+        CertificateResponse(issued=[IssuedCert(cert=wildcard_cert, domains=["*.example.com"])], existing=[]),
+    )
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    mgr.update_watch_domains(["api.example.com"])
+
+    with mgr._lock:
+        assert mgr._cache["api.example.com"] == now + timedelta(days=60)
+    assert client.key_store.saved_certs == []
+    output = capsys.readouterr().out
+    assert "[CertApi] WARN [unresolved]" not in output
+    assert "[CertApi] WARN [self-sign]" not in output
+
+
 def test_renewal_logs_fetched_certificate_summary(capsys):
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyClient()

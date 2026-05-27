@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from typing import Tuple, Optional, Union, List
 
 from certapi.crypto import Key, Certificate, certs_from_pem, cert_to_pem, certs_to_pem
+from certapi.domain_matching import is_wildcard_domain, normalize_domain, wildcard_candidate_for_domain
 from .KeyStore import KeyStore
 
 
@@ -153,39 +154,57 @@ class PostgresKeyStore(KeyStore):
 
                 # Insert associated domains
                 for domain in domains:
-                    cur.execute("INSERT INTO ssl_domains (domain, certificate_id) VALUES (%s, %s)", (domain, cert_id))
+                    domain = normalize_domain(domain)
+                    table = "ssl_wildcards" if is_wildcard_domain(domain) else "ssl_domains"
+                    cur.execute(f"INSERT INTO {table} (domain, certificate_id) VALUES (%s, %s)", (domain, cert_id))
                 conn.commit()
             return cert_id
 
     def find_cert_by_domain(self, domain: str) -> None | Tuple[int | str, Key, List[Certificate]]:
         """Fetches a certificate and its associated private key for a domain."""
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                # Directly execute and fetch result
-                cur.execute(
-                    """
-                    SELECT c.id, p.content, c.content
-                    FROM ssl_domains s
-                    JOIN certificates c ON s.certificate_id = c.id
-                    JOIN private_keys p ON c.priv_id = p.id
-                    WHERE s.domain = %s
-                """,
-                    (domain,),
-                )
-                res = cur.fetchone()
-
-                if res:
-                    return (res[0], Key.from_der(res[1]), self._get_cert_as_cert_list(res[2]))
-            return None
+        return self.find_key_and_cert_by_domain(domain)
 
     def find_key_and_cert_by_domain(self, domain: str) -> None | Tuple[int | str, Key, List[Certificate]]:
         """Fetches a certificate and its associated private key for a domain."""
+        result = self.find_key_and_cert_covering_domain(domain)
+        if result is None:
+            return None
+        return (result[1], result[2], result[3])
+
+    def find_key_and_cert_covering_domain(self, domain: str) -> None | Tuple[str, int | str, Key, List[Certificate]]:
+        """Fetches the exact or wildcard certificate that covers a domain."""
+        domain = normalize_domain(domain)
+        if not domain:
+            return None
+
+        for table, lookup_domain in self._domain_lookup_order(domain):
+            result = self._find_key_and_cert_in_domain_table(table, lookup_domain)
+            if result is not None:
+                cert_id, key, certs = result
+                return (lookup_domain, cert_id, key, certs)
+        return None
+
+    def _domain_lookup_order(self, domain: str) -> List[Tuple[str, str]]:
+        lookups = [("ssl_domains", domain), ("ssl_wildcards", domain)]
+        wildcard_domain = None if is_wildcard_domain(domain) else wildcard_candidate_for_domain(domain)
+        if wildcard_domain:
+            lookups.extend(
+                [
+                    ("ssl_wildcards", wildcard_domain),
+                    ("ssl_domains", wildcard_domain),
+                ]
+            )
+        return lookups
+
+    def _find_key_and_cert_in_domain_table(
+        self, table: str, domain: str
+    ) -> None | Tuple[int | str, Key, List[Certificate]]:
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """
+                    f"""
                     SELECT c.id, p.content, c.content
-                    FROM ssl_domains s
+                    FROM {table} s
                     JOIN certificates c ON s.certificate_id = c.id
                     JOIN private_keys p ON c.priv_id = p.id
                     WHERE s.domain = %s

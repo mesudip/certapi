@@ -2,6 +2,7 @@ import os
 from typing import Tuple, Optional, Union, List
 
 from certapi.crypto import certs_from_pem
+from certapi.domain_matching import is_wildcard_domain, normalize_domain, wildcard_candidate_for_domain
 from .KeyStore import KeyStore
 from certapi.crypto import Key, Certificate
 
@@ -55,7 +56,7 @@ class FileSystemKeyStore(KeyStore):
             key_content = f.read()
 
         for domain in domains:
-            domain_name = domain
+            domain_name = normalize_domain(domain)
             if name is not None and name.endswith(".selfsigned"):
                 domain_name += ".selfsigned"
 
@@ -70,7 +71,31 @@ class FileSystemKeyStore(KeyStore):
         return name
 
     def find_key_and_cert_by_domain(self, domain: str) -> None | Tuple[str, Key, List[Certificate]]:
-        return self._get_key_and_cert_by_name(domain)
+        result = self.find_key_and_cert_covering_domain(domain)
+        if result is None:
+            return None
+        return (result[1], result[2], result[3])
+
+    def find_key_and_cert_covering_domain(self, domain: str) -> None | Tuple[str, str, Key, List[Certificate]]:
+        domain = normalize_domain(domain)
+        if not domain:
+            return None
+
+        result = self._get_key_and_cert_by_name(domain)
+        if result is not None:
+            return (domain, result[0], result[1], result[2])
+
+        if is_wildcard_domain(domain):
+            return None
+
+        wildcard_domain = wildcard_candidate_for_domain(domain)
+        if wildcard_domain is None:
+            return None
+
+        result = self._get_key_and_cert_by_name(wildcard_domain)
+        if result is not None:
+            return (wildcard_domain, result[0], result[1], result[2])
+        return None
 
     def find_key_and_cert_by_cert_id(self, id: str) -> None | Tuple[Key, List[Certificate]]:
 

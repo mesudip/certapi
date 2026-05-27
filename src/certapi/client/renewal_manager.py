@@ -6,6 +6,7 @@ from typing import Callable, Dict, Optional, Set, Any, List, Literal
 
 from certapi.crypto import Key, certs_from_pem
 from certapi.client.cert_manager_client import CertManagerClient
+from certapi.domain_matching import domain_matches_cert_domain
 from certapi.http.types import CertificateResponse
 from certapi.issuers import SelfCertIssuer
 from certapi.manager.acme_cert_manager import DEFAULT_RENEW_THRESHOLD_DAYS
@@ -625,9 +626,9 @@ class RenewalManager:
                 # Guard against stale parse values.
                 if expiry <= now:
                     continue
-                for domain in cert.domains:
-                    if domain in self._watch_domains:
-                        self._cache[domain] = expiry
+                for watched_domain in self._watch_domains:
+                    if any(domain_matches_cert_domain(domain, watched_domain) for domain in cert.domains if domain):
+                        self._cache[watched_domain] = expiry
 
             self._cache = {d: exp for d, exp in self._cache.items() if d in self._watch_domains}
             self._lock.notify_all()
@@ -638,6 +639,9 @@ class RenewalManager:
             for domain in cert.domains:
                 if domain:
                     covered.add(domain)
+                    for watched_domain in self._watch_domains:
+                        if domain_matches_cert_domain(domain, watched_domain):
+                            covered.add(watched_domain)
         return covered
 
     def _log_certificate_results(self, certs, label: str):

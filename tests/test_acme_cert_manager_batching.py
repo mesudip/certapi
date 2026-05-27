@@ -1,4 +1,9 @@
+from datetime import UTC, datetime, timedelta
+
+from cryptography import x509
+
 from certapi.domain_batching import create_safe_domain_batches, would_trigger
+from certapi import Key
 from certapi.manager.acme_cert_manager import AcmeCertManager
 
 
@@ -45,6 +50,11 @@ def test_would_trigger_exact_rule():
 def test_create_safe_domain_batches_compacts_non_triggering_domains():
     domains = ["x.example.com", "y.example.com", "y.example.com"]
     assert create_safe_domain_batches(domains) == [["x.example.com", "y.example.com"]]
+
+
+def test_create_safe_domain_batches_preserves_wildcard_domains():
+    domains = ["*.example.com", "api.example.com"]
+    assert create_safe_domain_batches(domains) == [["*.example.com", "api.example.com"]]
 
 
 def test_issue_certificate_default_does_not_batch():
@@ -106,6 +116,53 @@ def test_obtain_batch_domains_uses_safe_batches():
         ["x.abc.def.ghi.example.com"],
     ]
     assert len(response.issued) == 2
+
+
+def test_obtain_batch_domains_preserves_wildcard_domains():
+    key_store = DummyKeyStore()
+    issuer = DummyIssuer()
+    solver = DummySolver()
+    manager = AcmeCertManager(key_store=key_store, cert_issuer=issuer, challenge_solvers=[solver])
+
+    domains = ["*.example.com", "api.example.com"]
+    response = manager.obtain(hosts=domains, batch_domains=True)
+
+    assert issuer.calls == [["*.example.com", "api.example.com"]]
+    assert response.issued[0].domains == ["*.example.com", "api.example.com"]
+
+
+def test_obtain_existing_wildcard_response_preserves_wildcard_domain():
+    now = datetime.now(UTC)
+    key = Key.generate("ecdsa")
+    csr = key.create_csr(domain="*.example.com", alt_names=["*.example.com"])
+    cert_builder = (
+        x509.CertificateBuilder()
+        .subject_name(csr.subject)
+        .issuer_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "pytest.certapi.local")]))
+        .public_key(csr.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=90))
+    )
+    for ext in csr.extensions:
+        cert_builder = cert_builder.add_extension(ext.value, ext.critical)
+    cert = key.sign_csr(cert_builder)
+
+    class WildcardKeyStore(DummyKeyStore):
+        def find_key_and_cert_covering_domain(self, domain):
+            if domain == "api.example.com":
+                return ("*.example.com", "wildcard-id", key, [cert])
+            return None
+
+    issuer = DummyIssuer()
+    solver = DummySolver()
+    manager = AcmeCertManager(key_store=WildcardKeyStore(), cert_issuer=issuer, challenge_solvers=[solver])
+
+    response = manager.obtain(hosts=["api.example.com"])
+
+    assert issuer.calls == []
+    assert [cert.domains for cert in response.existing] == [["*.example.com"]]
+    assert response.issued == []
 
 
 def test_issue_certificate_self_verify_false_skips_strict_solver_check():

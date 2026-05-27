@@ -1,13 +1,8 @@
-def _normalize_domain(domain: str) -> str:
-    domain = domain.strip().lower().rstrip(".")
-    if domain.startswith("*."):
-        domain = domain[2:]
-    return domain
+from .domain_matching import normalize_domain, split_domain_labels
 
 
 def _split_labels(domain: str) -> list[str]:
-    normalized = _normalize_domain(domain)
-    return [label for label in normalized.split(".") if label]
+    return split_domain_labels(domain)
 
 
 def would_trigger(labels: list[str], blocked: set[str]) -> bool:
@@ -51,12 +46,12 @@ def create_safe_domain_batches(domains: list[str], blocked_labels: list[str] | N
     seen: set[str] = set()
 
     for domain in domains:
-        normalized = _normalize_domain(domain)
+        normalized = normalize_domain(domain)
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
 
-        labels = [label for label in normalized.split(".") if label]
+        labels = split_domain_labels(normalized)
         if len(labels) <= 3:
             compact_batch.append(normalized)
             continue

@@ -1,16 +1,22 @@
 from unittest.mock import Mock
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import requests
+from cryptography import x509
 from flask import Flask
 from flask_restx import Api, Namespace
 
 from certapi.errors import CertApiException, HttpError, NetworkError
 from certapi.client.cert_manager_client import CertManagerClient
 from certapi.domain_batching import create_safe_domain_batches
+from certapi.crypto.crypto import cert_to_pem
 from certapi.http.types import CertificateResponse
+from certapi import Key
+from certapi.keystore import FileSystemKeyStore
 from certapi.manager.acme_cert_manager import AcmeCertManager
 from certapi.server.api import create_api_resources
+from certapi.server.cert_api import create_cert_resources
 
 
 def test_acme_cert_manager_issue_certificate_delegates_to_obtain(monkeypatch):
@@ -152,6 +158,33 @@ def test_cert_manager_client_obtain_calls_api_obtain(monkeypatch):
     assert captured["params"]["self_verify"] is False
 
 
+def test_cert_manager_client_saves_wildcard_response_domains_to_local_keystore(monkeypatch):
+    key = Key.generate("ecdsa")
+    key_store = Mock()
+    key_store.save_key.return_value = "wildcard-key"
+    client = CertManagerClient("https://certapi.local", key_store=key_store)
+
+    def fake_get(path, params=None):
+        return {
+            "existing": [],
+            "issued": [
+                {
+                    "privateKey": key.to_pem().decode("utf-8"),
+                    "certificate": "dummy-cert-pem",
+                    "domains": ["*.example.com"],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(client, "_get", fake_get)
+
+    client.obtain(hosts=["api.example.com"], batch_domains=True)
+
+    key_store.save_key.assert_called_once()
+    assert key_store.save_key.call_args.args[1] == "*.example.com"
+    key_store.save_cert.assert_called_once_with("wildcard-key", "dummy-cert-pem", ["*.example.com"])
+
+
 def test_cert_manager_client_setup_uses_health_endpoint(monkeypatch):
     client = CertManagerClient("https://certapi.local")
     captured = {}
@@ -269,6 +302,36 @@ def test_api_health_endpoint():
 
     assert response.status_code == 200
     assert response.json == {"status": "ok"}
+
+
+def test_cert_lookup_reports_matched_wildcard_domain(tmp_path):
+    app = Flask(__name__)
+    api = Api(app)
+    cert_ns = Namespace("certs")
+    api.add_namespace(cert_ns)
+
+    key_store = FileSystemKeyStore(base_dir=str(tmp_path / "keystore"))
+    key = Key.generate("ecdsa")
+    key_id = key_store.save_key(key, "*.example.com")
+    csr = key.create_csr(domain="*.example.com", alt_names=["*.example.com"])
+    now = datetime.now(UTC)
+    cert = key.sign_csr(
+        x509.CertificateBuilder()
+        .subject_name(csr.subject)
+        .issuer_name(csr.subject)
+        .public_key(csr.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=1))
+    )
+    key_store.save_cert(key_id, cert, ["*.example.com"], "*.example.com")
+    create_cert_resources(cert_ns, key_store)
+
+    response = app.test_client().get("/certs/?domain=api.example.com")
+
+    assert response.status_code == 200
+    assert response.json[0]["id"] == "*.example.com"
+    assert response.json[0]["pem"] == cert_to_pem(cert).decode("utf-8")
 
 
 def test_remote_obtain_self_verify_false_skips_server_prefilter():

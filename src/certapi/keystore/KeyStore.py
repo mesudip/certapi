@@ -66,6 +66,12 @@ class KeyStore(ABC):
     def find_key_and_cert_by_domain(self, domain: str) -> None | Tuple[int | str, Key, List[Certificate]]:
         pass
 
+    def find_key_and_cert_covering_domain(self, domain: str) -> None | Tuple[str, int | str, Key, List[Certificate]]:
+        result = self.find_key_and_cert_by_domain(domain)
+        if result is None:
+            return None
+        return (domain, result[0], result[1], result[2])
+
     @abstractmethod
     def find_key_and_cert_by_cert_id(self, id: str) -> None | Tuple[Key, List[Certificate]]:
         pass
