@@ -87,7 +87,7 @@ for cert_data in response.existing:
 `RenewalManager` is the long-running renewal engine for applications that have a changing set
 of domains, such as reverse proxies or service discovery controllers.
 
-The architecture has one explicit entry point for domain state:
+The architecture has one normal entry point for domain state:
 
 - The embedding application owns domain discovery and configuration rendering.
 - The application publishes the complete desired domain set with
@@ -95,15 +95,21 @@ The architecture has one explicit entry point for domain state:
 - `update_watch_domains()` replaces the watch set, prunes cache/backoff state for removed
   domains, and synchronously obtains or renews certificates that are missing or inside the
   configured renewal window.
-- The background renewal cycle does not mutate domain state or issue certificates directly
-  when a `renewal_callback` is configured. It only invokes that callback.
-- The callback is responsible for recomputing the current external domain state and calling
-  `update_watch_domains(domains)`.
+- The background worker is only a timer for already-watched certificates. It must not discover
+  domains, and it must not call `renewal_callback` just because the worker started or because
+  `update_watch_domains()` refreshed the watch set.
+- The worker invokes `renewal_callback` only as a trigger when an existing cached watched
+  certificate reaches the renewal window, or when an explicit force trigger asks for an
+  immediate cycle.
+- `renewal_callback` is not the domain update API. It is only a signal to the embedding
+  application that its current domain set should be refreshed. The application must then call
+  `update_watch_domains(domains)` from its own refresh/reconcile flow.
 - `RenewalManager` owns the locking around callback triggers and renewal work, so concurrent
   external updates and background triggers do not run overlapping certificate requests.
-- If the application needs side effects after certificates change, such as re-rendering or
-  reloading a proxy, that belongs in the application-level flow that called
-  `update_watch_domains()` or in an explicit post-renewal callback added for that purpose.
+- The callback should be small and non-blocking when possible: set an event, enqueue a refresh,
+  or wake the application's controller loop. Rendering config, reloading a proxy, notifying
+  service discovery, and publishing the new watch set belong to the application-level flow that
+  handles that refresh.
 
 This keeps responsibilities clear: certapi decides *when* renewal should be checked, the
 embedding application decides *what domains currently exist*, and `update_watch_domains()`
@@ -115,17 +121,32 @@ Example:
 from certapi.client import RenewalManager
 
 
-def on_proxy_config_changed(hosts):
-	domains = sorted({host.name for host in hosts if host.uses_tls})
-	renewal_manager.update_watch_domains(domains)
-	# Application-specific reload/rendering belongs here, not inside RenewalManager.
-
-
-def refresh_proxy_domains():
+def current_tls_domains():
 	hosts = proxy_config.current_hosts()
-	on_proxy_config_changed(hosts)
+	return sorted({host.name for host in hosts if host.uses_tls})
 
 
-renewal_manager = RenewalManager(cert_manager, renewal_callback=refresh_proxy_domains)
+def publish_current_watch_set():
+	renewal_manager.update_watch_domains(current_tls_domains())
+
+
+def on_proxy_config_changed():
+	# External configuration changes are application events, so the app can do
+	# its own config rendering/reload flow after publishing the current watch set.
+	publish_current_watch_set()
+	proxy_config.render()
+	proxy.reload()
+
+
+def request_domain_refresh():
+	# RenewalManager calls this only as a trigger for due watched certs or force cycles.
+	# The application controller owns the actual refresh and update_watch_domains() call.
+	controller.request_domain_refresh()
+
+
+renewal_manager = RenewalManager(cert_manager, renewal_callback=request_domain_refresh)
+
+# Seed the initial watch set explicitly; start() does not discover domains or invoke the callback.
+publish_current_watch_set()
 renewal_manager.start()
 ```

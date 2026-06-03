@@ -12,6 +12,15 @@ class CloudflareChallengeSolver(ChallengeSolver):
         self.cloudflare = Cloudflare(api_key)
         self.challenges_map = {}
 
+    @staticmethod
+    def from_environment(env: MutableMapping[str, str] = None) -> list["CloudflareChallengeSolver"]:
+        env = os.environ if env is None else env
+        solvers = []
+        for key, value in env.items():
+            if key.startswith("CLOUDFLARE_API_KEY") and value and value.strip():
+                solvers.append(CloudflareChallengeSolver(value.strip()))
+        return solvers
+
     def supported_challenge_type(self) -> Literal["dns-01"]:
         return "dns-01"
 

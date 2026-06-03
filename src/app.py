@@ -36,9 +36,7 @@ key_store: KeyStore = FileSystemKeyStore("db")
 
 challenge_solvers: List[ChallengeSolver] = []
 
-# DNS Challenge Siolver
-if os.getenv("CLOUDFLARE_API_TOKEN") is not None:
-    challenge_solvers.append(CloudflareChallengeSolver())
+challenge_solvers.extend(CloudflareChallengeSolver.from_environment())
 
 http_challenge_solver = FilesystemChallengeSolver("acme-challenges")
 challenge_solvers.append(http_challenge_solver)
@@ -49,7 +47,7 @@ cert_manager = AcmeCertManager(
     key_store=key_store,
     cert_issuer=cert_issuer,
     challenge_solvers=challenge_solvers,
-    renew_threshold_days=int(os.getenv("CERT_RENEW_THRESHOLD_DAYS", 75)),
+    renew_threshold_days=int(os.getenv("CERT_RENEW_THRESHOLD_DAYS", 30)),
 )
 cert_manager.setup()
 
