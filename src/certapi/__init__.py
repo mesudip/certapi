@@ -1,6 +1,6 @@
 from .acme.Acme import Acme, Order, AcmeNetworkError, AcmeHttpError, AcmeError, Challenge
 from .manager.acme_cert_manager import AcmeCertManager
-from .http.types import CertificateResponse, IssuedCert
+from .http.types import CertificateResponse, FailedDomains, IssuedCert
 from .errors import CertApiException
 from .crypto import (
     Certificate,

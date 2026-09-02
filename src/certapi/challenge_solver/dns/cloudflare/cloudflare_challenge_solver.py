@@ -10,7 +10,9 @@ from certapi.errors import CertApiException, DomainNotOwnedException, NetworkErr
 class CloudflareChallengeSolver(ChallengeSolver):
     def __init__(self, api_key: str = None):
         self.cloudflare = Cloudflare(api_key)
-        self.challenges_map = {}
+        # One name can carry several concurrent TXT records: an order covering both
+        # `example.com` and `*.example.com` needs two values at _acme-challenge.example.com.
+        self.challenges_map: dict[str, list[str]] = {}
 
     @staticmethod
     def from_environment(env: MutableMapping[str, str] = None) -> list["CloudflareChallengeSolver"]:
@@ -41,7 +43,7 @@ class CloudflareChallengeSolver(ChallengeSolver):
             domain = key.replace("_acme-challenge.", "")
 
         record_id = self.cloudflare.create_record(name=key, data=value, domain=domain)
-        self.challenges_map[key] = record_id
+        self.challenges_map.setdefault(key, []).append(record_id)
         print(f"CloudflareChallengeSolver [ {domain} ]: Added Record {key}")
 
     def get_challenge(self, key: str, domain: str) -> str:
@@ -54,15 +56,19 @@ class CloudflareChallengeSolver(ChallengeSolver):
         return None
 
     def delete_challenge(self, key: str, domain: str):
-        if key not in self.challenges_map:
+        record_ids = self.challenges_map.get(key)
+        if not record_ids:
             print(f"CloudflareChallengeSolver.delete: Not found Skipping  key={key}  domain={domain}")
             return
         if domain is None:
             domain = key.replace("_acme-challenge.", "")
 
-        record_id = self.challenges_map[key]
+        # Remove one record per save_challenge call so repeated names are fully cleaned up.
+        record_id = record_ids[-1]
         self.cloudflare.delete_record(record=record_id, domain=domain)
-        del self.challenges_map[key]
+        record_ids.pop()
+        if not record_ids:
+            del self.challenges_map[key]
         print(f"CloudflareChallengeSolver: Deleted challenge for {key} with record ID {record_id}")
 
     def _cleanup_zone_challenges(self, zone):
@@ -103,4 +109,4 @@ class CloudflareChallengeSolver(ChallengeSolver):
 
     def __len__(self):
         # Similar to __iter__, this will count challenges managed by this store instance.
-        return len(self.challenges_map)
+        return sum(len(record_ids) for record_ids in self.challenges_map.values())

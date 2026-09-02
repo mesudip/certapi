@@ -10,7 +10,7 @@ from certapi.client import RenewalManager
 from certapi.client.cert_manager_client import CertManagerClient
 from certapi.crypto.crypto import cert_to_pem
 from certapi.errors import NetworkError
-from certapi.http.types import CertificateResponse, IssuedCert
+from certapi.http.types import CertificateResponse, FailedDomains, IssuedCert
 from certapi.keystore.SqliteKeyStore import SqliteKeyStore
 from certapi.manager.acme_cert_manager import DEFAULT_RENEW_THRESHOLD_DAYS
 from certapi import Key
@@ -946,3 +946,48 @@ def test_renewal_manager_batches_due_domains():
     assert len(client.obtain_calls) == 1
     assert "domain1.com" in client.obtain_calls[0]["hosts"]
     assert "domain2.com" in client.obtain_calls[0]["hosts"]
+
+
+def test_partial_response_selfsigns_only_failed_domain_and_logs_reason(capsys):
+    """
+    Before `failed` existed, a solver error propagated out of obtain() and RenewalManager's
+    blanket `except Exception` self-signed *every* domain in the batch. A partial response
+    self-signs only the domain that actually failed, and still reports why.
+    """
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    client.key_store = DummyKeyStore()
+    ok_cert = _make_cert_pem("ok.example.com", now, valid_for_days=60)
+    client.set_handler(
+        "ok.example.com",
+        CertificateResponse(
+            issued=[IssuedCert(cert=ok_cert, domains=["ok.example.com"])],
+            existing=[],
+            failed=[
+                FailedDomains(
+                    domains=["bad.example.com"],
+                    name="DomainNotOwnedException",
+                    message="zone not owned",
+                    step="Cloudflare Create Record",
+                )
+            ],
+        ),
+    )
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    with mgr._lock:
+        mgr._watch_domains = {"ok.example.com", "bad.example.com"}
+    mgr._renew_domains(["ok.example.com", "bad.example.com"], now)
+
+    # ok.example.com keeps its real certificate; only bad.example.com is self-signed.
+    with mgr._lock:
+        assert "ok.example.com" in mgr._cache
+    assert [saved[2] for saved in client.key_store.saved_certs] == ["bad.example.com.selfsigned"]
+
+    output = capsys.readouterr().out
+    assert (
+        "[CertApi] ERROR [bad.example.com]: DomainNotOwnedException @ Cloudflare Create Record: zone not owned"
+        in output
+    )
+    assert "[CertApi] WARN [self-sign]: bad.example.com" in output
+    assert "[CertApi] WARN [self-sign]: ok.example.com" not in output

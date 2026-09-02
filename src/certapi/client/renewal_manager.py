@@ -521,6 +521,7 @@ class RenewalManager:
             certs = res.issued + res.existing
             self._log_certificate_fetch_summary(res)
             self._log_certificate_results(res.issued, "Issued certificates")
+            self._log_failed_batches(res)
             self._update_expiry_cache(certs)
             covered_domains = self._covered_domains_from_response(certs)
             unresolved_domains = [domain for domain in domains if domain not in covered_domains]
@@ -662,6 +663,14 @@ class RenewalManager:
         print(
             f"{self._log_prefix()} Fetched {total_count} certificates: " f"{issued_count} new, {existing_count} reused"
         )
+
+    def _log_failed_batches(self, response: CertificateResponse):
+        for failure in getattr(response, "failed", []):
+            step = f" @ {failure.step}" if failure.step else ""
+            print(
+                f"{self._log_prefix()} ERROR [{', '.join(failure.domains)}]:"
+                f" {failure.name}{step}: {failure.message}"
+            )
 
     def _log_unresolved_domains(self, domains: List[str]):
         if domains:

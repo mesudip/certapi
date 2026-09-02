@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   
 
+## [1.1.15] - 2026-09-02
+### Fixed
+- Wildcard and concrete domains are no longer sent in the same ACME order. `*.example.com`
+  is now issued as its own certificate, which fixes the "invalid request" rejections seen
+  when a wildcard was requested alongside names under it.
+- DNS-01 challenge cleanup now runs after every issuance attempt, including when challenge
+  creation, verification, polling, or order finalization fails. Cleanup is best-effort per
+  record so one provider error does not prevent the remaining records from being removed.
+  Cloudflare and DigitalOcean also retain every record id when a challenge name has several
+  concurrent TXT values instead of losing all but the last id.
+- Issuance now skips a failing batch on any `CertApiException`, not just `AcmeError`. DNS solver
+  errors (`DomainNotOwnedException`, Cloudflare/DigitalOcean API errors) previously escaped the
+  handler and aborted the whole call, discarding certificates already issued in that call and
+  leaving the remaining domains unattempted.
+- `skip_failing=True` now behaves the same with and without `batch_domains`. It was previously a
+  no-op whenever `batch_domains=False` (the default), so a run covering two challenge solvers
+  would abort entirely when the first solver failed, never attempting the second.
+- `GET /obtain` no longer turns a single failing batch into a 500 that discards the certificates
+  that did succeed; it returns them alongside a `failed` entry.
+- Domains are normalized (trimmed, lowercased, trailing dot removed) and de-duplicated before
+  keystore lookup, DNS-provider ownership checks, issuance, and storage. Previously a host such
+  as `API.Example.COM.` could fail provider discovery or be stored under a name that later lookup
+  could not find.
+
+### Added
+- `CertificateResponse.failed`: a list of `FailedDomains` (`domains`, `name`, `message`, `step`)
+  describing batches that could not be issued, populated when `skip_failing=True`. Also present in
+  the `GET /obtain` payload. The originating exception's `detail` is deliberately not exposed,
+  since it carries raw ACME/DNS-provider response bodies. The field is optional in both directions,
+  so old and new clients and servers interoperate. `RenewalManager` logs each entry, and self-signs
+  only the domains that actually failed instead of the whole batch.
+
+### Changed
+- When `skip_failing=True` but *nothing* could be obtained — no new certificate and no reusable
+  existing one — issuance still raises rather than returning an empty response, so a single-domain
+  call keeps its previous loud behavior.
+- Batched issuance (`batch_domains=True`, `issue_certificate_in_batches`) returns one certificate
+  per wildcard instead of folding wildcards into a shared SAN list. Callers that mapped a
+  requested host to an exact entry in `response.issued` should match through
+  `certapi.domain_matching.domain_matches_cert_domain` instead; `RenewalManager` already does.
+- `create_safe_domain_batches` emits wildcards as singleton batches. Depth-based grouping for
+  concrete domains is unchanged.
+- Custom `batch_generator` callables now receive only concrete domains; wildcards are split out
+  before the generator runs.
+- The declared minimum Python version is now 3.10, matching the type syntax used by the package.
+
 ## [1.1.0] - 2026-02-12
 ### Added
 - Command-line interface (`certapi` / `cli`) exposing common workflows: `issue`, `renew`, `list`, and `revoke`.

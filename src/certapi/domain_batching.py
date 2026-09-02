@@ -1,4 +1,4 @@
-from .domain_matching import normalize_domain, split_domain_labels
+from .domain_matching import is_wildcard_domain, normalize_domain, split_domain_labels
 
 
 def _split_labels(domain: str) -> list[str]:
@@ -36,12 +36,14 @@ def create_safe_domain_batches(domains: list[str], blocked_labels: list[str] | N
     Create compact issuance batches without any blocked-label list assumptions.
 
     Rules:
-    - Domains with <= 3 labels are grouped together into one compact batch.
+    - Wildcard domains are emitted first as singleton batches.
+    - Concrete domains with <= 3 labels are grouped together into one compact batch.
     - Longer domains are split into safe label groups and emitted as singleton batches.
 
     This avoids guessed label lists and keeps behavior deterministic.
     """
     compact_batch: list[str] = []
+    wildcard_batches: list[list[str]] = []
     singleton_batches: list[list[str]] = []
     seen: set[str] = set()
 
@@ -51,6 +53,10 @@ def create_safe_domain_batches(domains: list[str], blocked_labels: list[str] | N
             continue
         seen.add(normalized)
 
+        if is_wildcard_domain(normalized):
+            wildcard_batches.append([normalized])
+            continue
+
         labels = split_domain_labels(normalized)
         if len(labels) <= 3:
             compact_batch.append(normalized)
@@ -59,5 +65,5 @@ def create_safe_domain_batches(domains: list[str], blocked_labels: list[str] | N
         singleton_batches.append([normalized])
 
     if compact_batch:
-        return [compact_batch, *singleton_batches]
-    return singleton_batches
+        return [*wildcard_batches, compact_batch, *singleton_batches]
+    return [*wildcard_batches, *singleton_batches]

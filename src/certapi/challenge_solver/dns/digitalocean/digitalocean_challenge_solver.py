@@ -10,7 +10,10 @@ from certapi.errors import CertApiException, NetworkError
 class DigitalOceanChallengeSolver(ChallengeSolver):
     def __init__(self, api_key: str = None):
         self.digitalocean = DigitalOcean(api_key)
-        self.challenges_map = {}  # Stores key: record_id (needed for deletion)
+        # Stores key: list of record_ids (needed for deletion). One name can carry several
+        # concurrent TXT records: an order covering both `example.com` and `*.example.com`
+        # needs two values at _acme-challenge.example.com.
+        self.challenges_map: dict[str, list[str]] = {}
 
     def supported_challenge_type(self) -> Literal["dns-01"]:
         return "dns-01"
@@ -34,7 +37,7 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
         base_domain = self.digitalocean.determine_registered_domain(domain)
 
         record_id = self.digitalocean.create_record(name=key, data=value, domain=base_domain)
-        self.challenges_map[key] = record_id
+        self.challenges_map.setdefault(key, []).append(record_id)
         print(f"DigitalOceanChallengeSolver: Saved challenge for {key} with record ID {record_id}")
 
     def get_challenge(self, key: str, domain: str) -> str:
@@ -46,13 +49,17 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
         return None  # Return None if not found, as per ChallengeSolver's __getitem__ behavior
 
     def delete_challenge(self, key: str, domain: str):
-        if key not in self.challenges_map:
+        record_ids = self.challenges_map.get(key)
+        if not record_ids:
             raise KeyError(f"Challenge {key} not found in store (no record_id stored).")
 
-        record_id = self.challenges_map[key]
+        # Remove one record per save_challenge call so repeated names are fully cleaned up.
+        record_id = record_ids[-1]
         base_domain = self.digitalocean.determine_registered_domain(domain)
         self.digitalocean.delete_record(record=record_id, domain=base_domain)
-        del self.challenges_map[key]
+        record_ids.pop()
+        if not record_ids:
+            del self.challenges_map[key]
         print(f"DigitalOceanChallengeSolver: Deleted challenge for {key} with record ID {record_id}")
 
     def cleanup_old_challenges(self):
@@ -92,4 +99,4 @@ class DigitalOceanChallengeSolver(ChallengeSolver):
 
     def __len__(self):
         # Similar to __iter__, this will count challenges managed by this store instance.
-        return len(self.challenges_map)
+        return sum(len(record_ids) for record_ids in self.challenges_map.values())

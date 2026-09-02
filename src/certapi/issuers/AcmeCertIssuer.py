@@ -50,55 +50,63 @@ class AcmeCertIssuer(CertIssuer):
         challenges = order.remaining_challenges()
 
         saved_challenges = []
-        for c in challenges:
-            key, value = c.as_key_value(type=challenge_solver.supported_challenge_type())
-            challenge_solver.save_challenge(key, value, c.domain)
-            saved_challenges.append((key, c.domain))
-        for c in challenges:
-            if self.self_verify_challenge:
-                c.self_verify()
+        try:
+            for c in challenges:
+                key, value = c.as_key_value(type=challenge_solver.supported_challenge_type())
+                challenge_solver.save_challenge(key, value, c.domain)
+                saved_challenges.append((key, c.domain))
+            for c in challenges:
+                if self.self_verify_challenge:
+                    c.self_verify()
 
-        end = time.time() + max(len(challenges) * 10, 300)
-        remaining_now: List[Challenge] = [x for x in challenges]
-        next_remaining = []
-        counter = 1
+            end = time.time() + max(len(challenges) * 10, 300)
+            remaining_now: List[Challenge] = [x for x in challenges]
+            next_remaining = []
+            counter = 1
 
-        # acme can use our key and immediately allow certificate registration if we have recently proved domain ownership.
-        if len(challenges) > 0 and challenge_solver.supported_challenge_type() == "dns-01":
-            print("Waiting 20 seconds for DNS propagation .. ")
-            time.sleep(20)  # sleep 20 seconds for dns propagation
+            # acme can use our key and immediately allow certificate registration if we have recently proved domain ownership.
+            if len(challenges) > 0 and challenge_solver.supported_challenge_type() == "dns-01":
+                print("Waiting 20 seconds for DNS propagation .. ")
+                time.sleep(20)  # sleep 20 seconds for dns propagation
 
-        for c in challenges:
-            c.verify(challenge_solver.supported_challenge_type())
+            for c in challenges:
+                c.verify(challenge_solver.supported_challenge_type())
 
-        while len(remaining_now) > 0:
-            if time.time() > end and counter > 4:
-                print("Order finalization time out")
-                break
-            for c in remaining_now:
-                status = c.query_progress()
-                if status != True:  # NOTE that it must be True strictly
-                    next_remaining.append(c)
-            if len(next_remaining) > 0:
+            while len(remaining_now) > 0:
+                if time.time() > end and counter > 4:
+                    print("Order finalization time out")
+                    break
+                for c in remaining_now:
+                    status = c.query_progress()
+                    if status != True:  # NOTE that it must be True strictly
+                        next_remaining.append(c)
+                if len(next_remaining) > 0:
+                    time.sleep(3)
+                remaining_now, next_remaining, counter = next_remaining, [], counter + 1
+            order.finalize(csr)
+
+            def obtain_cert(count=5):
                 time.sleep(3)
-            remaining_now, next_remaining, counter = next_remaining, [], counter + 1
-        order.finalize(csr)
+                order.refresh()  # is this refresh necessary?
 
-        def obtain_cert(count=5):
-            time.sleep(3)
-            order.refresh()  # is this refresh necessary?
+                if order.status == "valid" or count == 0:
+                    if order.status == "valid":
+                        return order.get_certificate()
+                    return None
+                elif order.status == "processing":
+                    return obtain_cert(count - 1)
+                return None  # TODO: error throwing here
 
-            if order.status == "valid" or count == 0:
-                for key, domain in saved_challenges:
+            return obtain_cert()
+        finally:
+            # Delete in reverse save order because DNS solvers track repeated challenge names
+            # as stacks. Each deletion is best-effort so one provider error cannot leak all
+            # remaining records or mask the original issuance error.
+            for key, domain in reversed(saved_challenges):
+                try:
                     challenge_solver.delete_challenge(key, domain)
-                if order.status == "valid":
-                    return order.get_certificate()
-                return None
-            elif order.status == "processing":
-                return obtain_cert(count - 1)
-            return None  # TODO: error throwing here
-
-        return obtain_cert()
+                except Exception as cleanup_error:
+                    print(f"Warning: Failed to delete ACME challenge {key} for {domain}: " f"{cleanup_error}")
 
     def generate_key_and_cert_for_domains(
         self,

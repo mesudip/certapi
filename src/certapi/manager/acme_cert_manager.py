@@ -5,14 +5,15 @@ from datetime import datetime, timezone, timedelta
 from certapi import crypto
 from ..acme import Challenge
 from ..challenge_solver import ChallengeSolver
+from ..errors import CertApiException
 
 from ..issuers import AcmeCertIssuer, CertIssuer
-from ..http.types import CertificateResponse, IssuedCert
+from ..http.types import CertificateResponse, FailedDomains, IssuedCert
 from ..keystore.KeyStore import KeyStore
 from cryptography.x509 import Certificate, CertificateSigningRequest
 from ..crypto import Key, certs_to_pem, cert_to_pem, get_csr_hostnames
 from ..domain_batching import create_safe_domain_batches
-from ..domain_matching import domain_matches_cert_domain
+from ..domain_matching import domain_matches_cert_domain, is_wildcard_domain, normalize_domain
 
 DEFAULT_RENEW_THRESHOLD_DAYS = 62
 
@@ -173,6 +174,16 @@ class AcmeCertManager:
         if isinstance(hosts, str):
             hosts = [hosts]
 
+        normalized_hosts: List[str] = []
+        seen_hosts: set[str] = set()
+        for host in hosts:
+            normalized = normalize_domain(host)
+            if not normalized or normalized in seen_hosts:
+                continue
+            seen_hosts.add(normalized)
+            normalized_hosts.append(normalized)
+        hosts = normalized_hosts
+
         existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]] = {}
         for h in hosts:
             if hasattr(self.key_store, "find_key_and_cert_covering_domain"):
@@ -217,13 +228,38 @@ class AcmeCertManager:
             if len(domains_by_store) == 0 and not skip_failing:
                 raise ValueError("None of the domains are owned by this machine or could be verified")
 
-            for store, domains_to_issue in domains_by_store.items():
-                issuance_batches = (
-                    batch_generator(domains_to_issue) if batch_generator is not None else [domains_to_issue]
-                )
-                for batch in issuance_batches:
-                    if not batch:
+            if batch_generator is None:
+                issuance_batches = [(store, domains) for store, domains in domains_by_store.items()]
+            else:
+                wildcard_batches = [
+                    (store, [domain])
+                    for store, domains in domains_by_store.items()
+                    for domain in domains
+                    if is_wildcard_domain(domain)
+                ]
+                concrete_batches = []
+                for store, domains in domains_by_store.items():
+                    concrete_domains = [domain for domain in domains if not is_wildcard_domain(domain)]
+                    if concrete_domains:
+                        concrete_batches.extend((store, batch) for batch in batch_generator(concrete_domains))
+                issuance_batches = [*wildcard_batches, *concrete_batches]
+
+            issued_domains: List[str] = []
+            failures: List[FailedDomains] = []
+            first_error: Optional[CertApiException] = None
+            for store, planned_batch in issuance_batches:
+                batch: List[str] = []
+                for domain in planned_batch:
+                    domain = normalize_domain(domain)
+                    if not domain or domain in batch:
                         continue
+                    if any(domain_matches_cert_domain(issued, domain) for issued in issued_domains):
+                        continue
+                    batch.append(domain)
+                if not batch:
+                    continue
+
+                try:
                     private_key, fullchain_cert = self.cert_issuer.generate_key_and_cert_for_domains(
                         batch,
                         key_type=key_type,
@@ -235,23 +271,53 @@ class AcmeCertManager:
                         user_id=user_id,
                         challenge_solver=store,
                     )
+                except CertApiException as error:
+                    # Fail fast when the caller wants all-or-nothing, so a doomed run does not
+                    # keep burning ACME orders against the rate limit.
+                    if not skip_failing:
+                        raise
+                    failures.append(FailedDomains.from_exception(batch, error))
+                    first_error = first_error if first_error is not None else error
+                    print(
+                        f"ERROR: Failed to issue certificate for domains {batch}"
+                        f" [{type(error).__name__} @ {error.step}]: {error.message}"
+                    )
+                    continue
 
-                    if fullchain_cert:
-                        key_id = self.key_store.save_key(private_key, batch[0])
-                        self.key_store.save_cert(key_id, fullchain_cert, batch)
-                        issued_certs_list.append(IssuedCert(key=private_key, cert=fullchain_cert, domains=batch))
-                    else:
-                        print(f"Failed to issue certificate for domains: {batch}")
+                if fullchain_cert:
+                    key_id = self.key_store.save_key(private_key, batch[0])
+                    self.key_store.save_cert(key_id, fullchain_cert, batch)
+                    issued_certs_list.append(IssuedCert(key=private_key, cert=fullchain_cert, domains=batch))
+                    issued_domains.extend(batch)
+                else:
+                    print(f"Failed to issue certificate for domains: {batch}")
+                    failures.append(
+                        FailedDomains(
+                            domains=batch, name="IssuanceFailed", message="ACME issuance returned no certificate"
+                        )
+                    )
+
+            # Nothing at all could be produced, so surface the reason instead of an empty response.
+            if failures and not issued_certs_list and not existing:
+                if first_error is not None:
+                    raise first_error
+                raise CertApiException(
+                    f"Could not obtain a certificate for any of: {hosts}",
+                    {"failed": [failure.to_json() for failure in failures]},
+                    "Issue Certificate",
+                )
 
             # self.cert_issuer.challenge_solver = original_challenge_solver # Restore original
-            return createExistingResponse(existing, issued_certs_list)
+            return createExistingResponse(existing, issued_certs_list, failures)
 
         else:
             return createExistingResponse(existing, [])
 
 
 def createExistingResponse(
-    existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]], issued_certs: List[IssuedCert]
+    existing: Dict[str, Tuple[int | str, Key, List[Certificate] | str]],
+    issued_certs: List[IssuedCert],
+    failed: List[FailedDomains] = None,
 ):
     certs = []
     certMap = {}
@@ -276,4 +342,4 @@ def createExistingResponse(
     for hosts, key, cert in certMap.values():
         certs.append(IssuedCert(key=key, cert=cert, domains=hosts))
 
-    return CertificateResponse(existing=certs, issued=issued_certs)
+    return CertificateResponse(existing=certs, issued=issued_certs, failed=failed or [])

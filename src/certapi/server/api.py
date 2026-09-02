@@ -69,11 +69,25 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
         },
     )
 
+    failed_domains_model = api_ns.model(
+        "FailedDomainsData",
+        {
+            "domains": fields.List(fields.String, description="Domains in the batch that could not be issued"),
+            "name": fields.String(description="Exception class name"),
+            "message": fields.String(description="Error message"),
+            "step": fields.String(description="Issuance step that failed"),
+        },
+    )
+
     certificate_response_model = api_ns.model(
         "CertificateResponseData",
         {
             "existing": fields.List(fields.Nested(issued_cert_model), description="List of existing certificates"),
             "issued": fields.List(fields.Nested(issued_cert_model), description="List of newly issued certificates"),
+            "failed": fields.List(
+                fields.Nested(failed_domains_model),
+                description="Batches that could not be issued. Only populated when skip_failing is set.",
+            ),
         },
     )
 
