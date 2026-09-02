@@ -991,3 +991,99 @@ def test_partial_response_selfsigns_only_failed_domain_and_logs_reason(capsys):
     )
     assert "[CertApi] WARN [self-sign]: bad.example.com" in output
     assert "[CertApi] WARN [self-sign]: ok.example.com" not in output
+
+
+def test_worker_signals_callback_once_while_integration_pass_is_in_flight():
+    """
+    The nginx-proxy pattern: the callback only enqueues work; the integration later calls
+    update_watch_domains() from another thread, and that call blocks on a slow certapi request.
+    The worker must not keep re-signalling the callback while that pass is running.
+    """
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    cert = _make_cert_pem("due.example.com", now, valid_for_days=90)
+    obtain_started = threading.Event()
+    release_obtain = threading.Event()
+    callback_calls = []
+    mgr = None
+
+    def slow_handler(host, kwargs):
+        obtain_started.set()
+        release_obtain.wait(timeout=5)
+        return CertificateResponse(issued=[IssuedCert(cert=cert, domains=[host])], existing=[])
+
+    def renewal_callback():
+        callback_calls.append(time.monotonic())
+        if len(callback_calls) == 1:
+            threading.Thread(target=lambda: mgr.update_watch_domains(["due.example.com"]), daemon=True).start()
+
+    client.set_handler("due.example.com", slow_handler)
+    mgr = RenewalManager(client, renewal_callback=renewal_callback, renew_threshold_days=30, clock_fn=lambda: now)
+    with mgr._lock:
+        mgr._watch_domains = {"due.example.com"}
+        mgr._cache["due.example.com"] = now + timedelta(days=1)
+
+    mgr.start()
+    try:
+        assert obtain_started.wait(timeout=2)
+        time.sleep(2.5)  # the pass is still blocked; old code signalled the callback once a second here
+        assert len(callback_calls) == 1
+        release_obtain.set()
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with mgr._lock:
+                if mgr._cache.get("due.example.com") == now + timedelta(days=90) and not mgr._renewal_running:
+                    break
+            time.sleep(0.05)
+        time.sleep(0.3)
+        assert len(callback_calls) == 1
+        assert len(client.calls) == 1
+    finally:
+        mgr.stop()
+
+
+def test_worker_waits_callback_retry_interval_before_signalling_again():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    callback_calls = []
+    mgr = RenewalManager(
+        DummyClient(),
+        renewal_callback=lambda: callback_calls.append(time.monotonic()),
+        renew_threshold_days=30,
+        callback_retry_interval_seconds=0.5,
+        clock_fn=lambda: now,
+    )
+    with mgr._lock:
+        mgr._watch_domains = {"ignored.example.com"}
+        mgr._cache["ignored.example.com"] = now + timedelta(days=1)
+
+    mgr.start()
+    try:
+        time.sleep(1.3)
+    finally:
+        mgr.stop()
+
+    # first signal immediately, then one per retry interval (0.5s): 2 or 3 in 1.3s, never ~1 per second forever
+    assert 2 <= len(callback_calls) <= 3
+    assert all(b - a >= 0.45 for a, b in zip(callback_calls, callback_calls[1:]))
+
+
+def test_update_watch_domains_wakes_worker_only_after_pass_refreshed_cache():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+    cert = _make_cert_pem("seeded.example.com", now, valid_for_days=90)
+    client.set_handler(
+        "seeded.example.com",
+        CertificateResponse(issued=[IssuedCert(cert=cert, domains=["seeded.example.com"])], existing=[]),
+    )
+    callback_called = threading.Event()
+    mgr = RenewalManager(client, renewal_callback=callback_called.set, renew_threshold_days=30, clock_fn=lambda: now)
+
+    mgr.start()
+    try:
+        mgr.update_watch_domains(["seeded.example.com"])
+        assert not callback_called.wait(timeout=0.3)
+        with mgr._lock:
+            assert mgr._cache["seeded.example.com"] == now + timedelta(days=90)
+    finally:
+        mgr.stop()
+    assert len(client.calls) == 1

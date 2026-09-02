@@ -106,6 +106,9 @@ The architecture has one normal entry point for domain state:
   `update_watch_domains(domains)` from its own refresh/reconcile flow.
 - `RenewalManager` owns the locking around callback triggers and renewal work, so concurrent
   external updates and background triggers do not run overlapping certificate requests.
+- The worker never signals `renewal_callback` while a renewal pass started through
+  `update_watch_domains()` is in flight, and after signalling it waits for that call (or
+  `callback_retry_interval_seconds`) rather than re-signalling every second.
 - The callback should be small and non-blocking when possible: set an event, enqueue a refresh,
   or wake the application's controller loop. Rendering config, reloading a proxy, notifying
   service discovery, and publishing the new watch set belong to the application-level flow that

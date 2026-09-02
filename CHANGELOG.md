@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   
 
+## [1.1.16] - 2026-09-02
+### Fixed
+- `RenewalManager` no longer signals `renewal_callback` once a second while a renewal pass started
+  through `update_watch_domains()` is still running. Integrations whose callback only enqueues a
+  refresh (the documented pattern) received one callback per second for the whole duration of a
+  slow certificate request, and each one queued redundant work such as a proxy reload. The worker
+  now waits for an in-flight pass to finish and re-plans from the refreshed cache, and after
+  signalling the callback it waits `callback_retry_interval_seconds` (default 60) for the
+  integration's `update_watch_domains()` call instead of polling.
+- `update_watch_domains()` wakes the worker after its renewal pass, not before, so the worker no
+  longer sees a freshly seeded due entry and triggers the callback for work that pass is doing.
+
 ## [1.1.15] - 2026-09-02
 ### Fixed
 - Wildcard and concrete domains are no longer sent in the same ACME order. `*.example.com`

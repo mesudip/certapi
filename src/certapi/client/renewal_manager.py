@@ -63,6 +63,7 @@ class RenewalManager:
         blacklist_duration_seconds: int = 180,
         remote_poll_interval_seconds: int = 10,
         remote_startup_health_timeout_seconds: int = 60,
+        callback_retry_interval_seconds: int = 60,
         clock_fn: Optional[Callable[[], datetime]] = None,
         sleep_fn: Optional[Callable[[float], None]] = None,
         key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
@@ -105,6 +106,10 @@ class RenewalManager:
             remote_startup_health_timeout_seconds: How long to wait for a
                 remote ``CertManagerClient`` to become healthy before the first
                 request.
+            callback_retry_interval_seconds: After ``renewal_callback`` has been
+                signalled for due certificates, how long the worker waits for the
+                integration's :meth:`update_watch_domains` before signalling again.
+                A cache change wakes the worker earlier.
             clock_fn: Optional clock override for deterministic tests.
             sleep_fn: Optional sleep override for deterministic tests.
             key_type: Private key type requested from the backend.
@@ -138,6 +143,7 @@ class RenewalManager:
         self.blacklist_duration_seconds = blacklist_duration_seconds
         self.remote_poll_interval_seconds = remote_poll_interval_seconds
         self.remote_startup_health_timeout_seconds = remote_startup_health_timeout_seconds
+        self.callback_retry_interval_seconds = callback_retry_interval_seconds
         self.clock_fn = clock_fn or (lambda: datetime.now(timezone.utc))
         self.sleep_fn = sleep_fn
 
@@ -192,9 +198,14 @@ class RenewalManager:
             self._watch_domains = new_watch_set
             self._cache = {d: expiry for d, expiry in self._cache.items() if d in self._watch_domains}
             self._blacklist = {d: exp for d, exp in self._blacklist.items() if d in self._watch_domains}
-            self._lock.notify_all()
 
-        self._run_renewal_pass(force=False)
+        try:
+            self._run_renewal_pass(force=False)
+        finally:
+            # Wake the worker only now, so it re-plans from the refreshed cache instead of seeing a
+            # freshly seeded due entry and signalling renewal_callback for work this pass is doing.
+            with self._lock:
+                self._lock.notify_all()
 
     def start(self):
         """
@@ -298,6 +309,12 @@ class RenewalManager:
                 self._cycle_requested = False
 
                 if not force and not cycle_requested:
+                    # A renewal pass published through update_watch_domains() is in flight (or queued).
+                    # Whatever is due is being handled by it: wait for it to finish and re-plan from the
+                    # refreshed cache instead of signalling renewal_callback for the same work.
+                    if self._renewal_running or self._renewal_requested:
+                        self._lock.wait()
+                        continue
                     wait_seconds = self._compute_wait_seconds_locked(self.clock_fn())
                     if wait_seconds is None:
                         self._lock.wait()
@@ -315,9 +332,15 @@ class RenewalManager:
                     continue
                 wait_seconds = self._compute_wait_seconds_locked(self.clock_fn())
 
-                # Avoid tight loops in cases where nothing was attempted and no wait was computed.
                 if (wait_seconds is not None and wait_seconds <= 0) and attempt_count == 0:
-                    wait_seconds = 1
+                    if self.renewal_callback is not None:
+                        # renewal_callback has been signalled. The integration will call
+                        # update_watch_domains() from its own flow, which notifies this lock; until then
+                        # there is nothing to do, so do not re-signal every second.
+                        wait_seconds = self.callback_retry_interval_seconds
+                    else:
+                        # Nothing attempted (e.g. all due domains blacklisted): avoid a tight loop.
+                        wait_seconds = 1
 
             self._wait(wait_seconds)
 
