@@ -1,8 +1,8 @@
 from typing import Literal
 from .ChallengeSolver import ChallengeSolver
 import os
-import random
-import string
+import secrets
+import tempfile
 import requests
 import sys
 import re
@@ -64,52 +64,32 @@ class FilesystemChallengeSolver(ChallengeSolver):
         return all(allowed.match(x) for x in hostname.split("."))
 
     def verify_domain(self, _domain: list | str):
-        domain = [_domain] if type(_domain) is str else _domain
-
-        # Simple hostname validation
-        domain = [x for x in domain if self.is_valid_hostname(x)]
+        domains = [_domain] if isinstance(_domain, str) else list(dict.fromkeys(_domain))
+        valid_domains = [domain for domain in domains if self.is_valid_hostname(domain)]
         success = []
-        while True:
-            r1 = "".join([random.choice(string.ascii_letters + string.digits) for _ in range(32)])
-            file = os.path.join(self.directory, r1)
-            if os.path.exists(file):
-                continue
-            r2 = "".join([random.choice(string.ascii_letters + string.digits) for _ in range(256)])
-            with open(file, mode="wt") as file_descriptor:
-                file_descriptor.write(r2)
-            for d in domain:
+        # Exclusive creation keeps simultaneous verification requests independent.
+        with tempfile.NamedTemporaryFile(mode="wb", dir=self.directory, prefix="verify-", delete=False) as probe:
+            token = os.path.basename(probe.name)
+            expected = secrets.token_urlsafe(192).encode("ascii")
+            probe.write(expected)
+        try:
+            # nginx workers may run as a different user from the process creating
+            # the probe. This payload is intended to be publicly readable.
+            os.chmod(probe.name, 0o644)
+            for domain in valid_domains:
+                url = f"http://{domain}/.well-known/acme-challenge/{token}"
                 try:
-                    url = "http://%s/.well-known/acme-challenge/%s" % (d, r1)
                     response = requests.get(url, allow_redirects=False, timeout=3)
-                    if response.status_code == 200:
-                        if response.content.decode("utf-8") == r2:
-                            success.append(d)
-                            continue
-                    print(
-                        "[Error] ["
-                        + d
-                        + "] Not owned by this machine:"
-                        + "Status Code["
-                        + str(response.status_code)
-                        + "] -> "
-                        + url,
-                        file=sys.stderr,
-                    )
-                    continue
-                except requests.exceptions.RequestException as e:
-                    error = str(e)
-                    if error.find("Name does not resolve") > -1:
-                        print("[Error] [" + d + "] Domain Name could not be resolved", file=sys.stderr)
-                    elif error.find("Connection refused") > -1:
-                        print(
-                            "[Error] [" + d + "] Connection Refused! The port is filtered or not open.", file=sys.stderr
-                        )
+                    if response.status_code == 200 and response.content == expected:
+                        success.append(domain)
                     else:
-                        print("[ERROR] [" + d + "] Not owned by this machine : " + str(e))
-                    continue
-            os.remove(file)
-            break
-        if type(_domain) is str:
-            return len(success) > 0
-        else:
-            return success
+                        print(
+                            f"[Error] [{domain}] HTTP challenge verification failed: "
+                            f"status {response.status_code} or incorrect payload -> {url}",
+                            file=sys.stderr,
+                        )
+                except requests.exceptions.RequestException as error:
+                    print(f"[Error] [{domain}] HTTP challenge verification failed: {error}", file=sys.stderr)
+        finally:
+            os.remove(probe.name)
+        return bool(success) if isinstance(_domain, str) else success

@@ -2,12 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name="certapi",
-    version="1.1.16",
+    version="1.1.17",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
-        "cryptography>=39.0.0",
-        "requests",
+        "cryptography>=50.0.0",
+        "requests>=2.33.0",
     ],
     include_package_data=True,
     description="Python Package for managing keys, request SSL certificates from ACME.",

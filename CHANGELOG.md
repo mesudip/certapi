@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   
 
+## [1.1.17] - 2026-10-27
+### Added
+- `GET /api/verify?hostname=...` and `CertManagerClient.verify_domains(hosts)` check HTTP-01 routing
+  for each hostname without obtaining or reusing a certificate. The server writes a temporary probe
+  into its filesystem challenge store and fetches it through the public domain; the response lists
+  `verified` and `failed` hostnames. Servers without a filesystem solver answer 503, and a client
+  talking to an older server reports an explicit upgrade error.
+
+### Changed
+- `obtain` no longer skips domains that no challenge solver could verify. With `skip_failing=False`
+  (the `/api/obtain` default) any such domain rejects the whole request with HTTP 400 before
+  issuance. With `skip_failing=True` they are listed in the response's `failed` list, and when
+  nothing could be issued or reused the call raises instead of returning an empty response.
+- The Docker image is based on `python:3.11.18-alpine3.24` and upgrades Alpine packages at build
+  time. It no longer installs Alpine's `python3-dev`, which brought in a second Python interpreter,
+  and it removes pip, setuptools and wheel once the dependencies are installed.
+- Minimum versions are now `cryptography>=50.0.0` and `requests>=2.33.0`.
+- GitHub Actions are updated to their current major versions, the PyPI release builds with
+  Python 3.11, and tag builds of the Docker image skip the layer cache so packages resolve fresh.
+
+### Fixed
+- `FileSystemKeyStore` writes keys and certificates to a temporary file in the same directory and
+  renames it over the target. Readers such as nginx or a concurrent reload never see a truncated PEM,
+  and a crash mid-write cannot leave one behind. Keys are written `0600` and certificates `0644`,
+  owned by the writing user; an existing file's owner and mode are not kept, and a symlink is
+  replaced rather than written through.
+- `RenewalManager` forwards its `batch_domains` setting to the backend instead of always batching.
+  The setting now defaults to `True`: a renewal pass requests every due domain in one call, and
+  without batching all of them would go into a single ACME order.
+- `FilesystemChallengeSolver.verify_domain` uses an exclusively created probe file with a random
+  token, so simultaneous verifications do not interfere, and makes the probe world readable for
+  nginx workers running as another user.
+
 ## [1.1.16] - 2026-09-02
 ### Fixed
 - `RenewalManager` no longer signals `renewal_callback` once a second while a renewal pass started

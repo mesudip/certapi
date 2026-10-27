@@ -68,7 +68,7 @@ class RenewalManager:
         sleep_fn: Optional[Callable[[float], None]] = None,
         key_type: Literal["rsa", "ecdsa", "ed25519"] = "ecdsa",
         expiry_days: int = 90,
-        batch_domains: bool = False,
+        batch_domains: bool = True,
         self_verify: bool = True,
         country: Optional[str] = None,
         state: Optional[str] = None,
@@ -116,6 +116,8 @@ class RenewalManager:
             expiry_days: Requested certificate lifetime when the backend
                 supports it.
             batch_domains: Forwarded to the backend to enable domain batching.
+                On by default because a renewal pass requests every due
+                domain in one call.
             self_verify: Forwarded to the backend to enable or disable
                 ownership self-verification.
             country: Optional subject country for issued or fallback certs.
@@ -526,7 +528,7 @@ class RenewalManager:
                 "renew_threshold_days": renew_threshold_days,
                 # Renewal should obtain whatever can be issued, then self-sign unresolved domains.
                 "skip_failing": True,
-                "batch_domains": True,
+                "batch_domains": self.batch_domains,
                 "self_verify": self.self_verify,
                 "country": self.country,
                 "state": self.state,

@@ -11,13 +11,13 @@ jobs:
     steps:
       # Checkout the code
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Set up Python
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.10'  # You can specify a more specific version like '3.8' if needed
+          python-version: '3.11'  # You can specify a more specific version like '3.8' if needed
 
       # Install dependencies
       - name: Install dependencies

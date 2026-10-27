@@ -4,7 +4,7 @@ import pytest
 from cryptography import x509
 
 from certapi.acme import AcmeError
-from certapi.errors import DomainNotOwnedException
+from certapi.errors import CertApiException, DomainNotOwnedException
 from certapi.domain_batching import create_safe_domain_batches, would_trigger
 from certapi import Key
 from certapi.manager.acme_cert_manager import AcmeCertManager
@@ -330,10 +330,10 @@ def test_issue_certificate_self_verify_true_uses_strict_solver_check():
     solver = StrictFailingSolver()
     manager = AcmeCertManager(key_store=key_store, cert_issuer=issuer, challenge_solvers=[solver])
 
-    response = manager.issue_certificate(hosts=["force.example.com"])
+    with pytest.raises(CertApiException, match="Could not obtain"):
+        manager.issue_certificate(hosts=["force.example.com"])
 
     assert issuer.calls == []
-    assert response.issued == []
 
 
 def test_obtain_self_verify_true_raises_when_all_domains_fail_and_skip_failing_false():
@@ -517,3 +517,20 @@ def test_empty_failed_list_is_omitted_from_json():
     from certapi.http.types import CertificateResponse
 
     assert CertificateResponse().to_json() == {"existing": [], "issued": []}
+
+
+def test_partial_verification_failure_aborts_before_issuance_when_not_skipping():
+    issuer = DummyIssuer()
+    manager = AcmeCertManager(DummyKeyStore(), issuer, [RecordingStrictSolver()])
+    with pytest.raises(ValueError, match="bad.example.com"):
+        manager.obtain(["api.example.com", "bad.example.com"], skip_failing=False)
+    assert issuer.calls == []
+
+
+def test_partial_verification_failure_is_reported_when_skipping():
+    issuer = DummyIssuer()
+    manager = AcmeCertManager(DummyKeyStore(), issuer, [RecordingStrictSolver()])
+    result = manager.obtain(["api.example.com", "bad.example.com"], skip_failing=True)
+    assert issuer.calls == [["api.example.com"]]
+    assert result.failed[0].domains == ["bad.example.com"]
+    assert result.failed[0].step == "Domain Verification"

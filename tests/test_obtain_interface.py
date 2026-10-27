@@ -252,6 +252,7 @@ def test_cert_manager_client_setup_raises_http_error_with_response_body(monkeypa
         client.setup()
 
     assert "HTTP 503" in exc_info.value.message
+    assert "service unavailable" in exc_info.value.message
     assert exc_info.value.detail["body"]["message"] == "service unavailable"
 
 

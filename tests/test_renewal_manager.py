@@ -432,7 +432,8 @@ def test_renewal_manager_prefers_obtain_when_available():
     assert len(client.issue_calls) == 0
 
 
-def test_renewal_manager_passes_typed_obtain_options_into_renewal_calls():
+@pytest.mark.parametrize("batch_domains", [True, False])
+def test_renewal_manager_passes_typed_obtain_options_into_renewal_calls(batch_domains):
     now = datetime(2026, 1, 1, tzinfo=UTC)
     client = DummyClient()
     cert = _make_cert_pem("batch.example.com", now, valid_for_days=60)
@@ -445,18 +446,29 @@ def test_renewal_manager_passes_typed_obtain_options_into_renewal_calls():
         client,
         renew_threshold_days=30,
         clock_fn=lambda: now,
-        batch_domains=True,
+        batch_domains=batch_domains,
         self_verify=False,
         organization="certapi-tests",
     )
     mgr.update_watch_domains(["batch.example.com"])
 
     assert len(client.calls) == 1
-    assert client.calls[0]["kwargs"]["batch_domains"] is True
+    assert client.calls[0]["kwargs"]["batch_domains"] is batch_domains
     assert client.calls[0]["kwargs"]["self_verify"] is False
     assert client.calls[0]["kwargs"]["skip_failing"] is True
     assert client.calls[0]["kwargs"]["renew_threshold_days"] == 30
     assert client.calls[0]["kwargs"]["organization"] == "certapi-tests"
+
+
+def test_renewal_manager_batches_domains_by_default():
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    client = DummyClient()
+
+    mgr = RenewalManager(client, renew_threshold_days=30, clock_fn=lambda: now)
+    mgr.update_watch_domains(["a.example.com", "b.example.com"])
+
+    assert len(client.calls) == 1
+    assert client.calls[0]["kwargs"]["batch_domains"] is True
 
 
 def test_local_keystore_seed_prevents_remote_call_when_fresh():

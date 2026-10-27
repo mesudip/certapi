@@ -1,6 +1,6 @@
 ## Library has only 2 requirements
-cryptography>=39.0.0
-requests
+cryptography>=50.0.0
+requests>=2.33.0
 
 ## Requirements for docker-api image
 psycopg2

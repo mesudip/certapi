@@ -207,6 +207,7 @@ class AcmeCertManager:
             issued_certs_list = []
             # Group missing hosts by the challenge solver that supports them
             domains_by_store: Dict[ChallengeSolver, List[str]] = {}
+            unsupported_domains: List[str] = []
             for host in missing:
                 found_store = None
                 for store in self.challenge_solvers:
@@ -223,10 +224,13 @@ class AcmeCertManager:
                         domains_by_store[found_store] = []
                     domains_by_store[found_store].append(host)
                 else:
+                    unsupported_domains.append(host)
                     print(f"Warning: No challenge solver found that supports domain: {host}. Skipping.")
 
             if len(domains_by_store) == 0 and not skip_failing:
                 raise ValueError("None of the domains are owned by this machine or could be verified")
+            if unsupported_domains and not skip_failing:
+                raise ValueError("No challenge solver could verify domains: " + ", ".join(unsupported_domains))
 
             if batch_generator is None:
                 issuance_batches = [(store, domains) for store, domains in domains_by_store.items()]
@@ -245,7 +249,18 @@ class AcmeCertManager:
                 issuance_batches = [*wildcard_batches, *concrete_batches]
 
             issued_domains: List[str] = []
-            failures: List[FailedDomains] = []
+            failures: List[FailedDomains] = (
+                [
+                    FailedDomains(
+                        domains=unsupported_domains,
+                        name="DomainVerificationFailed",
+                        message="No challenge solver could verify these domains",
+                        step="Domain Verification",
+                    )
+                ]
+                if unsupported_domains
+                else []
+            )
             first_error: Optional[CertApiException] = None
             for store, planned_batch in issuance_batches:
                 batch: List[str] = []

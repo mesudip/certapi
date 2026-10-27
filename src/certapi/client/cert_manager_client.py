@@ -63,9 +63,12 @@ class CertManagerClient:
 
         if not 200 <= response.status_code < 300:
             detail = self._response_detail(response)
+            body = detail.get("body")
+            reason = body.get("message") if isinstance(body, dict) else None
+            reason = f": {reason}" if isinstance(reason, str) else ""
             raise HttpError(
                 response=response,
-                message=f"CertAPI returned HTTP {response.status_code}: {method} {url}",
+                message=f"CertAPI returned HTTP {response.status_code}: {method} {url}{reason}",
                 detail=detail,
                 step="CertAPI client request",
             )
@@ -116,6 +119,32 @@ class CertManagerClient:
         Check connection to the cert manager server.
         """
         return self._get("/api/health", timeout=timeout)
+
+    def verify_domains(self, hosts: Union[str, List[str]]) -> List[str]:
+        """Check public HTTP challenge routing without obtaining or reusing certificates."""
+        domains = list(dict.fromkeys([hosts] if isinstance(hosts, str) else hosts))
+        if not domains:
+            raise ValueError("At least one hostname is required for verification")
+        try:
+            data = self._get("/api/verify", params={"hostname": domains})
+        except HttpError as error:
+            if error.response.status_code == 404:
+                raise CertApiException(
+                    "CertAPI server does not support domain verification; upgrade the server to certapi>=1.1.17",
+                    step="Domain Verification",
+                ) from error
+            raise
+        verified = data.get("verified") if isinstance(data, dict) else None
+        failed = data.get("failed") if isinstance(data, dict) else None
+        if (
+            not isinstance(verified, list)
+            or not isinstance(failed, list)
+            or not all(isinstance(domain, str) for domain in verified + failed)
+            or set(verified) & set(failed)
+            or set(verified + failed) != set(domains)
+        ):
+            raise CertApiException("Invalid CertAPI domain verification response", step="Domain Verification")
+        return verified
 
     def wait_healthy(
         self,

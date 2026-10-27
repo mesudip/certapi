@@ -20,6 +20,14 @@ I designed this library so that it can be imported and plugged in to other pytho
 
 See the developer guide in [Developer.md](Developer.md) for library usage and workflows.
 
+## HTTP domain verification
+
+CertAPI 1.1.17 adds `GET /api/verify?hostname=example.com&hostname=www.example.com` and `CertManagerClient.verify_domains(hosts)`. The server writes a temporary HTTP-01 probe into its filesystem challenge store, fetches each domain's `http://<domain>/.well-known/acme-challenge/<token>` URL without following redirects, and compares the exact payload. The response contains `verified` and `failed` hostname lists. No certificate is obtained or reused; DNS solver support is not treated as HTTP reachability. Invalid hostnames and wildcards fail this HTTP check. A server without a filesystem HTTP solver returns 503.
+
+Reverse proxies must forward the challenge path to this server, including when application routes require authentication, redirect to HTTPS, or return 503. Upgrade the server as well as the client to use this endpoint. A client talking to an older server reports an explicit upgrade error instead of treating API connectivity as domain verification.
+
+Certificate `obtain` calls with `skip_failing=false` reject any domains that fail solver selection before issuing the remaining domains. With `skip_failing=true`, rejected domains appear in the response's `failed` list, so callers can report partial failures and apply renewal backoff.
+
 
 ## Installation
 

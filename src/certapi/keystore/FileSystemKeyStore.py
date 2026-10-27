@@ -1,10 +1,27 @@
 import os
+import tempfile
 from typing import Tuple, Optional, Union, List
 
 from certapi.crypto import certs_from_pem
 from certapi.domain_matching import is_wildcard_domain, normalize_domain, wildcard_candidate_for_domain
 from .KeyStore import KeyStore
 from certapi.crypto import Key, Certificate
+
+
+def _write_file(path: str, data: bytes, mode: int):
+    # Write beside the target and rename over it: rename is atomic, so nginx or a concurrent reader of
+    # this store never sees a half written certificate or key, and a crash cannot leave one behind.
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp_path, mode)
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.remove(tmp_path)
+        raise
 
 
 class FileSystemKeyStore(KeyStore):
@@ -20,9 +37,7 @@ class FileSystemKeyStore(KeyStore):
 
     def save_key(self, key: Key, name: str | None) -> str:
         name = str(name)
-        key_path = os.path.join(self.keys_dir, f"{name}.key")
-        with open(key_path, "wb") as f:
-            f.write(key.to_pem())
+        _write_file(os.path.join(self.keys_dir, f"{name}.key"), key.to_pem(), 0o600)
         return name
 
     def find_key_by_id(self, id: str | int) -> Union[None, Key]:
@@ -46,9 +61,7 @@ class FileSystemKeyStore(KeyStore):
         cert_pem = self._get_cert_as_pem_bytes(cert)
 
         if name:
-            cert_path = os.path.join(self.certs_dir, f"{name}.crt")
-            with open(cert_path, "wb") as f:
-                f.write(cert_pem)
+            _write_file(os.path.join(self.certs_dir, f"{name}.crt"), cert_pem, 0o644)
 
         key_content = None
         key_path = os.path.join(self.keys_dir, f"{private_key_id}.key")
@@ -61,12 +74,9 @@ class FileSystemKeyStore(KeyStore):
                 domain_name += ".selfsigned"
 
             if domain_name != private_key_id:
-                with open(os.path.join(self.keys_dir, f"{domain_name}.key"), "wb") as f:
-                    f.write(key_content)
+                _write_file(os.path.join(self.keys_dir, f"{domain_name}.key"), key_content, 0o600)
 
-            domain_cert_path = os.path.join(self.certs_dir, f"{domain_name}.crt")
-            with open(domain_cert_path, "wb") as f:
-                f.write(cert_pem)
+            _write_file(os.path.join(self.certs_dir, f"{domain_name}.crt"), cert_pem, 0o644)
 
         return name
 

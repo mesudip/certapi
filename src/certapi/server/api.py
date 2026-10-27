@@ -59,6 +59,25 @@ def create_api_resources(api_ns, cert_manager: AcmeCertManager, renew_queue_size
         def get(self):
             return {"status": "ok"}
 
+    verify_parser = reqparse.RequestParser()
+    verify_parser.add_argument("hostname", type=str, action="append", required=True, location="args")
+
+    @api_ns.route("/verify")
+    class VerifyDomains(Resource):
+        @api_ns.doc(parser=verify_parser, description="Check HTTP-01 routing without issuing a certificate")
+        def get(self):
+            domains = list(dict.fromkeys(verify_parser.parse_args()["hostname"]))
+            solvers = [
+                solver for solver in cert_manager.challenge_solvers if isinstance(solver, FilesystemChallengeSolver)
+            ]
+            if not solvers:
+                api_ns.abort(503, message="HTTP challenge verification is unavailable: no filesystem solver configured")
+            # Use the same store served by the HTTP challenge endpoint. DNS solver support
+            # does not prove that public HTTP requests reach this CertAPI deployment.
+            with lock_manager:
+                verified = solvers[0].verify_domain(domains)
+            return {"verified": verified, "failed": [domain for domain in domains if domain not in verified]}
+
     # Models for documentation
     issued_cert_model = api_ns.model(
         "IssuedCertData",

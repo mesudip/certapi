@@ -1,4 +1,5 @@
 from time import timezone
+import pathlib
 import pytest
 import os
 import psycopg2  # Added for PostgreSQL database creation
@@ -259,6 +260,57 @@ def test_sqlite_lookup_supports_legacy_wildcard_rows(tmp_path, ca_key: Key):
     assert covered is not None
     assert covered[0] == "*.example.com"
     assert covered[2].to_pem() == key.to_pem()
+
+
+def test_filesystem_store_replaces_files_atomically(tmp_path, ca_key: Key, monkeypatch):
+    keystore = FileSystemKeyStore(base_dir=str(tmp_path / "atomic_fs"))
+    domain = "atomic.example.com"
+    key_path = tmp_path / "atomic_fs" / "keys" / f"{domain}.key"
+    cert_path = tmp_path / "atomic_fs" / "certs" / f"{domain}.crt"
+
+    def issue():
+        key = Key.generate("ecdsa")
+        keystore.save_key(key, domain)
+        cert = sign_csr(key.create_csr(domain=domain, alt_names=[domain]), ca_key, 7)
+        keystore.save_cert(domain, cert, [domain], domain)
+        return key.to_pem(), cert_to_pem(cert)
+
+    old_key_pem, old_cert_pem = issue()
+    previous = {str(key_path): old_key_pem, str(cert_path): old_cert_pem}
+    real_replace = os.replace
+
+    def replace(src, dst):
+        # Until the rename happens the target must still be the complete previous file, and the
+        # new content must already be complete beside it: no reader can ever see a truncated PEM.
+        assert os.path.basename(src).startswith(".tmp-") and os.path.dirname(src) == os.path.dirname(dst)
+        assert pathlib.Path(dst).read_bytes() == previous[dst]
+        assert pathlib.Path(src).read_bytes().endswith(b"-----\n")
+        real_replace(src, dst)
+        previous[dst] = pathlib.Path(dst).read_bytes()
+
+    monkeypatch.setattr(os, "replace", replace)
+    new_key_pem, new_cert_pem = issue()
+
+    assert key_path.read_bytes() == new_key_pem and key_path.read_bytes() != old_key_pem
+    assert cert_path.read_bytes() == new_cert_pem
+    assert oct(key_path.stat().st_mode & 0o777) == "0o600"
+    assert oct(cert_path.stat().st_mode & 0o777) == "0o644"
+    for folder in (key_path.parent, cert_path.parent):
+        assert [p.name for p in folder.iterdir() if p.name.startswith(".tmp-")] == []
+
+
+def test_filesystem_store_keeps_old_file_when_write_fails(tmp_path, ca_key: Key, monkeypatch):
+    keystore = FileSystemKeyStore(base_dir=str(tmp_path / "failing_fs"))
+    key_path = tmp_path / "failing_fs" / "keys" / "example.com.key"
+    key = Key.generate("ecdsa")
+    keystore.save_key(key, "example.com")
+
+    monkeypatch.setattr(os, "fsync", lambda fd: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError, match="disk full"):
+        keystore.save_key(Key.generate("ecdsa"), "example.com")
+
+    assert key_path.read_bytes() == key.to_pem()
+    assert [p.name for p in key_path.parent.iterdir()] == ["example.com.key"]
 
 
 def sign_csr(csr: x509.CertificateSigningRequest, issuer_key: Key, days_valid=365) -> Certificate:

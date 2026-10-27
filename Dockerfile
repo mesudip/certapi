@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.11.18-alpine3.24
 
 # Set work directory
 WORKDIR /app
@@ -8,20 +8,24 @@ ENV PYTHONUNBUFFERED=1
 ENV RENEW_QUEUE_SIZE=5
 
 # Install system dependencies
+# apk upgrade picks up Alpine fixes released after the base image was built
 # postgresql-dev for psycopg2
-# gcc, musl-dev, python3-dev for building python extensions
+# gcc, musl-dev for building python extensions (the base image already has the Python headers)
 # libffi-dev, openssl-dev for cryptography
-RUN apk add --no-cache \
+RUN apk upgrade --no-cache && apk add --no-cache \
     postgresql-dev \
     gcc \
     musl-dev \
-    python3-dev \
     libffi-dev \
     openssl-dev
 
 # Install python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# The base image ships the pip and setuptools bundled with Python 3.11, which are well behind upstream.
+# Nothing runs pip at runtime, so pip, setuptools and wheel are removed once the dependencies are installed.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt && \
+    python -m pip uninstall -y pip setuptools wheel
 
 
 RUN addgroup -g 1261 certuser && \
